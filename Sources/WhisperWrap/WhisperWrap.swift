@@ -7,6 +7,7 @@ import AppKit
 class AppDelegate: NSObject, NSApplicationDelegate {
     var contentViewModel: ContentViewModel?
     var dictationViewModel: DictationViewModel?
+    private var isLaunchSequence = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Observe window notifications to show/hide dock icon
@@ -23,6 +24,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.willCloseNotification,
             object: nil
         )
+        
+        // End launch sequence after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.isLaunchSequence = false
+        }
     }
 
     @MainActor @objc private func windowDidBecomeVisible(_ notification: Notification) {
@@ -30,7 +36,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = notification.object as? NSWindow, window.isKind(of: NSPanel.self) {
             return
         }
-        
+
+        // Suppress initial window during launch
+        if isLaunchSequence {
+            if let window = notification.object as? NSWindow {
+                window.close()
+            }
+            return
+        }
         // Show dock icon when a window becomes visible
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
