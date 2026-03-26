@@ -35,6 +35,10 @@ class ClaudeService: ObservableObject {
 
     /// Verify that claude CLI is authenticated by running a trivial command
     func verifyAuth() async -> Bool {
+        isAuthenticating = true
+        authError = nil
+        defer { isAuthenticating = false }
+
         do {
             let result = try await shell.runCommand("claude --print \"hello\" 2>&1")
             let output = result.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -43,8 +47,9 @@ class ClaudeService: ObservableObject {
                 isConnected = true
                 return true
             }
+            authError = "Claude CLI is not authenticated. Run 'claude' in your terminal to log in."
         } catch {
-            // Auth failed
+            authError = "Failed to verify Claude authentication: \(error.localizedDescription)"
         }
         isConnected = false
         return false
