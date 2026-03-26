@@ -55,14 +55,34 @@ class ClaudeService: ObservableObject {
         return false
     }
 
-    /// Process text through Claude CLI, streaming output line by line
+    /// Process text through Claude CLI, streaming output line by line.
+    /// The returned stream guarantees temp file cleanup on completion or cancellation.
     func process(text: String, prompt: String) -> AsyncStream<String> {
-        // Escape text for shell: use a temp file to avoid quoting issues
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("claude_input_\(UUID().uuidString).txt")
         let fullPrompt = "\(prompt)\n\n---\n\n\(text)"
         try? fullPrompt.write(to: tempFile, atomically: true, encoding: .utf8)
 
-        let command = "cat \"\(tempFile.path)\" | claude --print 2>&1; rm -f \"\(tempFile.path)\""
-        return shell.streamCommand(command)
+        let command = "cat \"\(tempFile.path)\" | claude --print"
+        let innerStream = shell.streamCommand(command)
+
+        return AsyncStream { continuation in
+            let task = Task {
+                for await chunk in innerStream {
+                    continuation.yield(chunk)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+                try? FileManager.default.removeItem(at: tempFile)
+            }
+        }
+    }
+
+    /// Check if output looks like a Claude CLI error rather than valid content
+    static func looksLikeError(_ output: String) -> Bool {
+        let lower = output.lowercased()
+        return lower.contains("error:") || lower.contains("traceback") || lower.contains("fatal:")
+            || lower.contains("not authenticated") || lower.contains("api error")
     }
 }

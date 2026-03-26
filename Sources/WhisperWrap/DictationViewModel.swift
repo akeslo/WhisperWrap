@@ -590,8 +590,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                         }
                     }
 
-                    if !streamedResult.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        text = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
+                        text = trimmed
+                    } else if ClaudeService.looksLikeError(trimmed) {
+                        claudeService.isConnected = false
                     }
                 }
 

@@ -199,11 +199,13 @@ class ContentViewModel: ObservableObject {
                         claudeStreamingOutput = streamedResult
                     }
 
-                    if !streamedResult.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        // Overwrite the output file with Claude-processed text
-                        try streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
-                            .write(to: outputURL, atomically: true, encoding: .utf8)
+                    let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
+                        try trimmed.write(to: outputURL, atomically: true, encoding: .utf8)
                         consoleOutput += "✅ Claude processing complete\n"
+                    } else if ClaudeService.looksLikeError(trimmed) {
+                        claudeService.isConnected = false
+                        consoleOutput += "⚠️ Claude processing failed, using raw transcription\n"
                     }
                     claudeStreamingOutput = ""
                 }
