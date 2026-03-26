@@ -6,9 +6,11 @@ class HUDState: ObservableObject {
     enum HUDStatus {
         case listening
         case transcribing
+        case processingWithClaude
     }
-    
+
     @Published var audioLevel: Float = 0.0
+    @Published var streamingText: String = ""
     @Published var phase: Double = 0.0
     @Published var tick: Int = 0
     @Published var status: HUDStatus = .listening

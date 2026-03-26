@@ -89,7 +89,36 @@ class HUDWindowController: NSWindowController {
     func setStatus(_ status: HUDState.HUDStatus) {
         hudState.status = status
     }
-    
+
+    func updateStreamingText(_ text: String) {
+        hudState.streamingText = text
+        // Resize window to fit content when streaming
+        if let panel = window {
+            let hasText = !text.isEmpty
+            let newHeight: CGFloat = hasText ? 280 : 80
+            let newWidth: CGFloat = hasText ? 500 : 450
+            var frame = panel.frame
+            let heightDiff = newHeight - frame.height
+            frame.size.height = newHeight
+            frame.size.width = newWidth
+            frame.origin.y -= heightDiff // Grow upward
+            panel.setFrame(frame, display: true, animate: true)
+        }
+    }
+
+    func clearStreamingText() {
+        hudState.streamingText = ""
+        // Reset window size
+        if let panel = window {
+            var frame = panel.frame
+            let heightDiff = 80 - frame.height
+            frame.size.height = 80
+            frame.size.width = 450
+            frame.origin.y -= heightDiff
+            panel.setFrame(frame, display: true, animate: true)
+        }
+    }
+
     private func handleClose() {
         hide()
         closeHandler?()
