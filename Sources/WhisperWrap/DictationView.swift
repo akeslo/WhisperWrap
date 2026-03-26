@@ -4,10 +4,12 @@ import ServiceManagement
 struct DictationView: View {
     @EnvironmentObject var viewModel: DictationViewModel
     @EnvironmentObject var contentViewModel: ContentViewModel
+    @EnvironmentObject var claudeService: ClaudeService
+    @EnvironmentObject var claudePromptManager: ClaudePromptManager
 
     var body: some View {
         VStack(spacing: 16) {
-            DictationSettingsView(viewModel: viewModel)
+            DictationSettingsView(viewModel: viewModel, claudeService: claudeService, claudePromptManager: claudePromptManager)
             DictationRecordingView(viewModel: viewModel)
         }
         .padding(.vertical, 8)

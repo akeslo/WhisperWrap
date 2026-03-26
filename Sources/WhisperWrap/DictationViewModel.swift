@@ -54,6 +54,23 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             }
         }
     }
+
+    // Claude Processing Settings
+    @Published var claudeEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(claudeEnabled, forKey: "dictationClaudeEnabled")
+        }
+    }
+    @Published var selectedClaudePromptID: UUID? {
+        didSet {
+            if let id = selectedClaudePromptID {
+                UserDefaults.standard.set(id.uuidString, forKey: "dictationClaudePromptID")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "dictationClaudePromptID")
+            }
+        }
+    }
+
     enum ActiveAlert: Identifiable {
         case accessibility
         case microphoneDenied
@@ -82,6 +99,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     // Dependencies
     var contentViewModel: ContentViewModel?
+    var claudeService: ClaudeService?
+    var claudePromptManager: ClaudePromptManager?
     let hotKeyManager = HotKeyManager()
 
     private var audioRecorder: AVAudioRecorder?
@@ -103,6 +122,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Load saved recordings directory
         if let savedPath = UserDefaults.standard.string(forKey: "recordingsSaveDirectory") {
             self.recordingsSaveDirectory = URL(fileURLWithPath: savedPath)
+        }
+
+        // Load Claude settings
+        self.claudeEnabled = UserDefaults.standard.bool(forKey: "dictationClaudeEnabled")
+        if let savedID = UserDefaults.standard.string(forKey: "dictationClaudePromptID"),
+           let uuid = UUID(uuidString: savedID) {
+            self.selectedClaudePromptID = uuid
+        } else {
+            self.selectedClaudePromptID = ClaudePrompt.builtinCleanUp.id
         }
 
         super.init()
@@ -530,15 +558,42 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if self.showHUD {
                     Task { @MainActor in
                         HUDWindowController.shared.hide()
+                        HUDWindowController.shared.clearStreamingText()
                     }
                 }
             }
 
             do {
-                let text = try await contentViewModel.transcribeDictation(audioURL: url, model: selectedModel)
+                var text = try await contentViewModel.transcribeDictation(audioURL: url, model: selectedModel)
 
                 // Check if cancelled before continuing
                 if Task.isCancelled { return }
+
+                // Claude processing (if enabled)
+                if claudeEnabled,
+                   let claudeService = claudeService,
+                   let claudePromptManager = claudePromptManager,
+                   let promptID = selectedClaudePromptID,
+                   let prompt = claudePromptManager.allPrompts.first(where: { $0.id == promptID }) {
+
+                    if showHUD {
+                        HUDWindowController.shared.setStatus(.processingWithClaude)
+                    }
+
+                    let stream = claudeService.process(text: text, prompt: prompt.prompt)
+                    var streamedResult = ""
+                    for await chunk in stream {
+                        if Task.isCancelled { return }
+                        streamedResult += chunk
+                        if showHUD {
+                            HUDWindowController.shared.updateStreamingText(streamedResult)
+                        }
+                    }
+
+                    if !streamedResult.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        text = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
 
                 self.transcribedText = text
 

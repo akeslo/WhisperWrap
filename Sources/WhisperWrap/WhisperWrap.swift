@@ -10,6 +10,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Move ownership of ViewModels here to ensure they exist at launch
     var contentViewModel = ContentViewModel()
     var dictationViewModel = DictationViewModel()
+    let claudeService = ClaudeService()
+    let claudePromptManager = ClaudePromptManager()
     
     // Flag to control whether the main window should be shown
     var shouldShowMainWindow = false
@@ -18,6 +20,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Connect dependencies
         dictationViewModel.contentViewModel = contentViewModel
+        dictationViewModel.claudeService = claudeService
+        dictationViewModel.claudePromptManager = claudePromptManager
+        contentViewModel.claudeService = claudeService
+        contentViewModel.claudePromptManager = claudePromptManager
         
         // Setup Menu Bar immediately on launch
         MenuBarManager.shared.setup(dictationViewModel: dictationViewModel, contentViewModel: contentViewModel)
@@ -204,6 +210,8 @@ struct WhisperWrapApp: App {
         WindowGroup(id: "main") {
             ContentView(viewModel: appDelegate.contentViewModel)
                 .environmentObject(appDelegate.dictationViewModel)
+                .environmentObject(appDelegate.claudeService)
+                .environmentObject(appDelegate.claudePromptManager)
                 .frame(minWidth: 600, minHeight: 400)
                 .handlesExternalEvents(preferring: Set(arrayLiteral: "main"), allowing: Set(arrayLiteral: "*"))
                 // MenuBarManager setup removed from here as it is now in AppDelegate

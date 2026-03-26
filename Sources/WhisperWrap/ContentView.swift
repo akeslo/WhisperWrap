@@ -2,11 +2,13 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel: ContentViewModel
-    
+    @EnvironmentObject var claudeService: ClaudeService
+    @EnvironmentObject var claudePromptManager: ClaudePromptManager
+
     init(viewModel: ContentViewModel = ContentViewModel()) {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
-    
+
     @StateObject private var prefetch = PrefetchManager()
     @StateObject private var ttsViewModel = TTSViewModel()
     @State private var selectedTab = 4
@@ -20,6 +22,8 @@ struct ContentView: View {
                 TabView(selection: $selectedTab) {
                     DictationView()
                         .environmentObject(viewModel)
+                        .environmentObject(claudeService)
+                        .environmentObject(claudePromptManager)
                         .tabItem {
                             Label("Dictation", systemImage: "mic.fill")
                         }
@@ -30,6 +34,10 @@ struct ContentView: View {
                         isProcessing: $viewModel.isProcessing,
                         processingStage: $viewModel.processingStage,
                         processingProgress: $viewModel.processingProgress,
+                        claudeService: claudeService,
+                        claudePromptManager: claudePromptManager,
+                        fileClaudeEnabled: $viewModel.fileClaudeEnabled,
+                        fileClaudePromptID: $viewModel.fileClaudePromptID,
                         onDrop: { url, model, format in
                             viewModel.transcribe(url: url, model: model, format: format)
                         },

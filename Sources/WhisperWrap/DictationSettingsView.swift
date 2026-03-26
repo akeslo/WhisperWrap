@@ -3,7 +3,15 @@ import Carbon
 
 struct DictationSettingsView: View {
     @ObservedObject var viewModel: DictationViewModel
-    
+    @ObservedObject var claudeService: ClaudeService
+    @ObservedObject var claudePromptManager: ClaudePromptManager
+
+    @State private var claudeSetupError: String?
+    @State private var showClaudeSetupAlert = false
+    @State private var isCheckingClaude = false
+    @State private var customPromptName: String = ""
+    @State private var customPromptText: String = ""
+
     var body: some View {
         GroupBox(label: Label("Settings", systemImage: "gear")) {
             VStack(alignment: .leading, spacing: 12) {
@@ -78,7 +86,7 @@ struct DictationSettingsView: View {
                 }
 
                 Divider()
-                
+
                 HStack {
                     Text("Global Hotkey:")
                     Spacer()
@@ -88,6 +96,127 @@ struct DictationSettingsView: View {
             .padding(8)
         }
         .padding(.horizontal)
+
+        // MARK: - Claude Processing Section
+        GroupBox(label: Label("Claude Processing", systemImage: "brain")) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Toggle("Process with Claude", isOn: Binding(
+                        get: { viewModel.claudeEnabled },
+                        set: { newValue in
+                            if newValue && !claudeService.isConnected {
+                                // First-time enable: check CLI + auth
+                                enableClaude()
+                            } else {
+                                viewModel.claudeEnabled = newValue
+                            }
+                        }
+                    ))
+
+                    Spacer()
+
+                    if isCheckingClaude {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Connecting...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else if claudeService.isConnected && viewModel.claudeEnabled {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                            Text("Connected")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                if viewModel.claudeEnabled {
+                    HStack {
+                        Text("Prompt")
+                            .frame(width: 100, alignment: .leading)
+                        Picker("", selection: $viewModel.selectedClaudePromptID) {
+                            ForEach(claudePromptManager.allPrompts) { prompt in
+                                Text(prompt.name).tag(prompt.id as UUID?)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 200)
+
+                        if let selectedID = viewModel.selectedClaudePromptID,
+                           let selected = claudePromptManager.allPrompts.first(where: { $0.id == selectedID }),
+                           !selected.isBuiltin {
+                            Button(role: .destructive) {
+                                claudePromptManager.deleteCustomPrompt(selected)
+                                viewModel.selectedClaudePromptID = ClaudePrompt.builtinCleanUp.id
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+
+                        Spacer()
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Save Custom Prompt")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        HStack {
+                            TextField("Name", text: $customPromptName)
+                                .frame(width: 120)
+                            TextField("Prompt instructions...", text: $customPromptText)
+                            Button("Save") {
+                                guard !customPromptName.isEmpty, !customPromptText.isEmpty else { return }
+                                claudePromptManager.saveCustomPrompt(name: customPromptName, prompt: customPromptText)
+                                // Select the newly created prompt
+                                if let newPrompt = claudePromptManager.allPrompts.last {
+                                    viewModel.selectedClaudePromptID = newPrompt.id
+                                }
+                                customPromptName = ""
+                                customPromptText = ""
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(customPromptName.isEmpty || customPromptText.isEmpty)
+                        }
+                    }
+                }
+            }
+            .padding(8)
+        }
+        .padding(.horizontal)
+        .alert("Claude Setup Error", isPresented: $showClaudeSetupAlert) {
+            Button("OK") { }
+        } message: {
+            Text(claudeSetupError ?? "Unknown error")
+        }
+    }
+
+    private func enableClaude() {
+        isCheckingClaude = true
+        Task {
+            defer { isCheckingClaude = false }
+
+            // Check CLI availability
+            guard await claudeService.checkAvailability() != nil else {
+                claudeSetupError = "Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code"
+                showClaudeSetupAlert = true
+                return
+            }
+
+            // Verify auth
+            let authed = await claudeService.verifyAuth()
+            if authed {
+                viewModel.claudeEnabled = true
+            } else {
+                claudeSetupError = claudeService.authError ?? "Claude CLI is not authenticated. Run 'claude' in your terminal to log in."
+                showClaudeSetupAlert = true
+            }
+        }
     }
 }
 
@@ -96,7 +225,7 @@ struct HotkeyRecorderView: View {
     @ObservedObject var viewModel: DictationViewModel
     @State private var isRecording = false
     @FocusState private var isFocused: Bool
-    
+
     var body: some View {
         Button(action: {
             isRecording = true
@@ -117,7 +246,7 @@ struct HotkeyRecorderView: View {
         .focused($isFocused)
         .onKeyPress { keyPress in
             guard isRecording else { return .ignored }
-            
+
             // Convert SwiftUI key to Carbon key code
             if let keyCode = keyCodeFromKeyEquivalent(keyPress.key) {
                 var modifiers: Int = 0
@@ -125,7 +254,7 @@ struct HotkeyRecorderView: View {
                 if keyPress.modifiers.contains(.shift) { modifiers |= shiftKey }
                 if keyPress.modifiers.contains(.option) { modifiers |= optionKey }
                 if keyPress.modifiers.contains(.control) { modifiers |= controlKey }
-                
+
                 // Require at least one modifier
                 if modifiers != 0 {
                     viewModel.setHotkey(keyCode: keyCode, modifiers: modifiers)
@@ -141,7 +270,7 @@ struct HotkeyRecorderView: View {
             isFocused = false
         }
     }
-    
+
     private func keyCodeFromKeyEquivalent(_ key: KeyEquivalent) -> Int? {
         // Map common keys to Carbon key codes
         let keyMap: [Character: Int] = [

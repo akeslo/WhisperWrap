@@ -5,12 +5,19 @@ struct TranscriptionView: View {
     @Binding var isProcessing: Bool
     @Binding var processingStage: String
     @Binding var processingProgress: Double
+    @ObservedObject var claudeService: ClaudeService
+    @ObservedObject var claudePromptManager: ClaudePromptManager
+    @Binding var fileClaudeEnabled: Bool
+    @Binding var fileClaudePromptID: UUID?
     @State private var selectedModel: Model = .base
     @State private var selectedFormat: String = "txt"
     @State private var isTargeted: Bool = false
     @State private var droppedFileName: String?
     @State private var showCopiedConfirmation: Bool = false
     @State private var showClearConfirmation: Bool = false
+    @State private var isCheckingClaude: Bool = false
+    @State private var claudeSetupError: String?
+    @State private var showClaudeSetupAlert: Bool = false
 
     let formats = ["txt", "srt", "json"]
     let onDrop: (URL, Model, String) -> Void
@@ -53,7 +60,45 @@ struct TranscriptionView: View {
                 Spacer()
             }
             .disabled(isProcessing)
-            
+
+            // MARK: - Claude Processing
+            HStack(spacing: 15) {
+                Toggle("Process with Claude", isOn: Binding(
+                    get: { fileClaudeEnabled },
+                    set: { newValue in
+                        if newValue && !claudeService.isConnected {
+                            enableClaude()
+                        } else {
+                            fileClaudeEnabled = newValue
+                        }
+                    }
+                ))
+
+                if fileClaudeEnabled {
+                    Picker("Prompt", selection: $fileClaudePromptID) {
+                        ForEach(claudePromptManager.allPrompts) { prompt in
+                            Text(prompt.name).tag(prompt.id as UUID?)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 150)
+                }
+
+                if isCheckingClaude {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .disabled(isProcessing)
+            .alert("Claude Setup Error", isPresented: $showClaudeSetupAlert) {
+                Button("OK") { }
+            } message: {
+                Text(claudeSetupError ?? "Unknown error")
+            }
+
             // MARK: - Drop Zone
             ZStack {
                 RoundedRectangle(cornerRadius: 16)
@@ -231,5 +276,26 @@ struct TranscriptionView: View {
         }
         .padding()
         .onAppear { }
+    }
+
+    private func enableClaude() {
+        isCheckingClaude = true
+        Task {
+            defer { isCheckingClaude = false }
+
+            guard await claudeService.checkAvailability() != nil else {
+                claudeSetupError = "Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code"
+                showClaudeSetupAlert = true
+                return
+            }
+
+            let authed = await claudeService.verifyAuth()
+            if authed {
+                fileClaudeEnabled = true
+            } else {
+                claudeSetupError = claudeService.authError ?? "Claude CLI is not authenticated. Run 'claude' in your terminal to log in."
+                showClaudeSetupAlert = true
+            }
+        }
     }
 }

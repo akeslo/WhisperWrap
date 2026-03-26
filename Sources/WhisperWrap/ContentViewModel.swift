@@ -18,6 +18,26 @@ class ContentViewModel: ObservableObject {
     @Published var processingProgress: Double = 0.0
     @Published var requestedTab: Int? = nil
 
+    // Claude Processing Settings (file transcription)
+    @Published var fileClaudeEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(fileClaudeEnabled, forKey: "fileClaudeEnabled")
+        }
+    }
+    @Published var fileClaudePromptID: UUID? {
+        didSet {
+            if let id = fileClaudePromptID {
+                UserDefaults.standard.set(id.uuidString, forKey: "fileClaudePromptID")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "fileClaudePromptID")
+            }
+        }
+    }
+    @Published var claudeStreamingOutput: String = ""
+
+    var claudeService: ClaudeService?
+    var claudePromptManager: ClaudePromptManager?
+
     let shellService = ShellService()
     private lazy var pythonEnv = PythonEnvManager(applicationSupportDirectory: applicationSupportDirectory, shell: shellService)
     private var cancellables = Set<AnyCancellable>()
@@ -34,6 +54,13 @@ class ContentViewModel: ObservableObject {
     }()
 
     init() {
+        self.fileClaudeEnabled = UserDefaults.standard.bool(forKey: "fileClaudeEnabled")
+        if let savedID = UserDefaults.standard.string(forKey: "fileClaudePromptID"),
+           let uuid = UUID(uuidString: savedID) {
+            self.fileClaudePromptID = uuid
+        } else {
+            self.fileClaudePromptID = ClaudePrompt.builtinCleanUp.id
+        }
         checkDependencies()
         cleanupOldTempFiles()
     }
@@ -150,10 +177,41 @@ class ContentViewModel: ObservableObject {
                 consoleOutput += "🚀 Acceleration: Auto (GPU/CPU)\n\n"
                 let outputURL = try await runWhisper(on: fileURL, model: model, format: format, testMode: false)
 
+                // Claude processing (if enabled)
+                if fileClaudeEnabled,
+                   let claudeService = claudeService,
+                   let claudePromptManager = claudePromptManager,
+                   let promptID = fileClaudePromptID,
+                   let prompt = claudePromptManager.allPrompts.first(where: { $0.id == promptID }) {
+
+                    processingStage = "Processing with Claude..."
+                    consoleOutput += "\n🧠 Processing transcription with Claude (\(prompt.name))...\n"
+                    claudeStreamingOutput = ""
+
+                    // Read the transcription text
+                    let transcriptionText = try String(contentsOf: outputURL, encoding: .utf8)
+
+                    let stream = claudeService.process(text: transcriptionText, prompt: prompt.prompt)
+                    var streamedResult = ""
+                    for await chunk in stream {
+                        if Task.isCancelled { break }
+                        streamedResult += chunk
+                        claudeStreamingOutput = streamedResult
+                    }
+
+                    if !streamedResult.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        // Overwrite the output file with Claude-processed text
+                        try streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .write(to: outputURL, atomically: true, encoding: .utf8)
+                        consoleOutput += "✅ Claude processing complete\n"
+                    }
+                    claudeStreamingOutput = ""
+                }
+
                 processingStage = "Saving transcription..."
                 processingProgress = 0.9
                 consoleOutput += "\n💾 Saving transcription...\n"
-                
+
                 // User requested saving to input file's directory
                 let inputDir = fileURL.deletingLastPathComponent()
                 let finalURL = inputDir.appendingPathComponent(outputURL.lastPathComponent)
