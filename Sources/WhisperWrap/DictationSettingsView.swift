@@ -11,6 +11,8 @@ struct DictationSettingsView: View {
     @State private var isCheckingClaude = false
     @State private var customPromptName: String = ""
     @State private var customPromptText: String = ""
+    @State private var editingPromptText: String = ""
+    @State private var promptTextModified: Bool = false
 
     var body: some View {
         GroupBox(label: Label("Settings", systemImage: "gear")) {
@@ -134,6 +136,22 @@ struct DictationSettingsView: View {
                 }
 
                 if viewModel.claudeEnabled {
+                    Toggle("Prompt selection on each use", isOn: $viewModel.promptSelectionMode)
+                        .help("Show a 5-second prompt picker in the HUD after each transcription")
+
+                    HStack {
+                        Text("Model")
+                            .frame(width: 100, alignment: .leading)
+                        Picker("", selection: $viewModel.selectedClaudeModel) {
+                            Text("Haiku").tag("haiku")
+                            Text("Sonnet").tag("sonnet")
+                            Text("Opus").tag("opus")
+                        }
+                        .labelsHidden()
+                        .frame(width: 200)
+                        Spacer()
+                    }
+
                     HStack {
                         Text("Prompt")
                             .frame(width: 100, alignment: .leading)
@@ -141,16 +159,21 @@ struct DictationSettingsView: View {
                             ForEach(claudePromptManager.allPrompts) { prompt in
                                 Text(prompt.name).tag(prompt.id as UUID?)
                             }
+                            Divider()
+                            Text("Custom...").tag(nil as UUID?)
                         }
                         .labelsHidden()
                         .frame(width: 200)
+                        .onChange(of: viewModel.selectedClaudePromptID) { _, newValue in
+                            loadPromptText(for: newValue)
+                        }
 
                         if let selectedID = viewModel.selectedClaudePromptID,
                            let selected = claudePromptManager.allPrompts.first(where: { $0.id == selectedID }),
                            !selected.isBuiltin {
                             Button(role: .destructive) {
                                 claudePromptManager.deleteCustomPrompt(selected)
-                                viewModel.selectedClaudePromptID = ClaudePrompt.builtinCleanUp.id
+                                viewModel.selectedClaudePromptID = ClaudePrompt.builtinPolish.id
                             } label: {
                                 Image(systemName: "trash")
                             }
@@ -160,28 +183,71 @@ struct DictationSettingsView: View {
                         Spacer()
                     }
 
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Save Custom Prompt")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        HStack {
-                            TextField("Name", text: $customPromptName)
-                                .frame(width: 120)
-                            TextField("Prompt instructions...", text: $customPromptText)
-                            Button("Save") {
-                                guard !customPromptName.isEmpty, !customPromptText.isEmpty else { return }
-                                claudePromptManager.saveCustomPrompt(name: customPromptName, prompt: customPromptText)
-                                // Select the newly created prompt
-                                if let newPrompt = claudePromptManager.allPrompts.last {
-                                    viewModel.selectedClaudePromptID = newPrompt.id
+                    // Prompt text editor for selected prompts
+                    if let selectedID = viewModel.selectedClaudePromptID,
+                       let selected = claudePromptManager.allPrompts.first(where: { $0.id == selectedID }) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextEditor(text: $editingPromptText)
+                                .font(.system(.body, design: .monospaced))
+                                .frame(minHeight: 60, maxHeight: 120)
+                                .scrollContentBackground(.hidden)
+                                .padding(4)
+                                .background(Color(nsColor: .textBackgroundColor))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                                )
+                                .onChange(of: editingPromptText) { _, newValue in
+                                    promptTextModified = newValue != selected.prompt
                                 }
-                                customPromptName = ""
-                                customPromptText = ""
+
+                            HStack {
+                                if selected.isBuiltin && claudePromptManager.builtinOverrides[selected.id.uuidString] != nil {
+                                    Button("Reset to Default") {
+                                        claudePromptManager.resetBuiltinPrompt(selected)
+                                        loadPromptText(for: viewModel.selectedClaudePromptID)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                if promptTextModified {
+                                    Button("Save") {
+                                        claudePromptManager.updatePrompt(selected, newText: editingPromptText)
+                                        promptTextModified = false
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(customPromptName.isEmpty || customPromptText.isEmpty)
+                        }
+                    }
+
+                    if viewModel.selectedClaudePromptID == nil {
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Save Custom Prompt")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            HStack {
+                                TextField("Name", text: $customPromptName)
+                                    .frame(width: 120)
+                                TextField("Prompt instructions...", text: $customPromptText)
+                                Button("Save") {
+                                    guard !customPromptName.isEmpty, !customPromptText.isEmpty else { return }
+                                    claudePromptManager.saveCustomPrompt(name: customPromptName, prompt: customPromptText)
+                                    if let newPrompt = claudePromptManager.allPrompts.last {
+                                        viewModel.selectedClaudePromptID = newPrompt.id
+                                    }
+                                    customPromptName = ""
+                                    customPromptText = ""
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(customPromptName.isEmpty || customPromptText.isEmpty)
+                            }
                         }
                     }
                 }
@@ -189,11 +255,25 @@ struct DictationSettingsView: View {
             .padding(8)
         }
         .padding(.horizontal)
+        .onAppear {
+            loadPromptText(for: viewModel.selectedClaudePromptID)
+        }
         .alert("Claude Setup Error", isPresented: $showClaudeSetupAlert) {
             Button("OK") { }
         } message: {
             Text(claudeSetupError ?? "Unknown error")
         }
+    }
+
+    private func loadPromptText(for promptID: UUID?) {
+        guard let id = promptID,
+              let prompt = claudePromptManager.allPrompts.first(where: { $0.id == id }) else {
+            editingPromptText = ""
+            promptTextModified = false
+            return
+        }
+        editingPromptText = prompt.prompt
+        promptTextModified = false
     }
 
     private func enableClaude() {

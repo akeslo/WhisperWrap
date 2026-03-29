@@ -24,7 +24,7 @@ struct HUDView: View {
 
                 Spacer()
 
-                if state.status != .processingWithClaude {
+                if state.status != .processingWithClaude && state.status != .selectingPrompt {
                     // Visualizer - organic "dancing" bars
                     HStack(spacing: 4) {
                         ForEach(0..<20) { index in
@@ -55,6 +55,96 @@ struct HUDView: View {
                 .help(state.status == .listening ? "Stop Recording" : "Cancel")
             }
             .padding()
+
+            if state.status == .selectingPrompt {
+                Divider()
+                VStack(spacing: 8) {
+                    if state.isEnteringCustomPrompt {
+                        HStack(spacing: 8) {
+                            TextField("Enter custom prompt...", text: $state.customPromptText)
+                                .textFieldStyle(.plain)
+                                .font(.system(.body, design: .monospaced))
+                                .padding(6)
+                                .background(Color(nsColor: .textBackgroundColor))
+                                .cornerRadius(8)
+                                .onSubmit {
+                                    HUDWindowController.shared.submitCustomPrompt(state.customPromptText)
+                                }
+                            Button(action: {
+                                state.isEnteringCustomPrompt = false
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: true) {
+                            HStack(spacing: 6) {
+                                ForEach(state.availablePrompts) { prompt in
+                                    Button(action: {
+                                        HUDWindowController.shared.selectPrompt(prompt)
+                                    }) {
+                                        Text(prompt.name)
+                                            .font(.system(.caption, weight: prompt.id == state.defaultPromptID ? .semibold : .regular))
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(prompt.id == state.defaultPromptID ? Color.purple.opacity(0.2) : Color.secondary.opacity(0.1))
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(prompt.id == state.defaultPromptID ? Color.purple.opacity(0.5) : Color.clear, lineWidth: 1)
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                Button(action: {
+                                    HUDWindowController.shared.skipPromptSelection()
+                                }) {
+                                    Text("None")
+                                        .font(.system(.caption))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(Color.secondary.opacity(0.1))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                Button(action: {
+                                    state.isEnteringCustomPrompt = true
+                                }) {
+                                    Text("Custom...")
+                                        .font(.system(.caption))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(Color.secondary.opacity(0.1))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.trailing, 4)
+                        }
+                        .scrollIndicators(.visible)
+                    }
+
+                    // Progress bar
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.purple.opacity(0.4))
+                            .frame(width: geo.size.width * state.countdownProgress, height: 4)
+                            .animation(.linear(duration: 0.05), value: state.countdownProgress)
+                    }
+                    .frame(height: 4)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 10)
+            }
 
             if state.status == .processingWithClaude && !state.streamingText.isEmpty {
                 Divider()
@@ -89,6 +179,7 @@ struct HUDView: View {
         switch state.status {
         case .listening: return "mic.fill"
         case .transcribing: return "waveform.circle.fill"
+        case .selectingPrompt: return "brain"
         case .processingWithClaude: return "brain"
         }
     }
@@ -97,6 +188,7 @@ struct HUDView: View {
         switch state.status {
         case .listening: return .red
         case .transcribing: return .orange
+        case .selectingPrompt: return .purple
         case .processingWithClaude: return .purple
         }
     }
@@ -105,6 +197,7 @@ struct HUDView: View {
         switch state.status {
         case .listening: return "Listening..."
         case .transcribing: return "Transcribing..."
+        case .selectingPrompt: return "Select prompt"
         case .processingWithClaude: return "Processing with Claude..."
         }
     }

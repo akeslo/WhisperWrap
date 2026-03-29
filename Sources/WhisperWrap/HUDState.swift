@@ -6,6 +6,7 @@ class HUDState: ObservableObject {
     enum HUDStatus {
         case listening
         case transcribing
+        case selectingPrompt
         case processingWithClaude
     }
 
@@ -14,7 +15,14 @@ class HUDState: ObservableObject {
     @Published var phase: Double = 0.0
     @Published var tick: Int = 0
     @Published var status: HUDStatus = .listening
-    
+
+    // Prompt selection state
+    @Published var availablePrompts: [ClaudePrompt] = []
+    @Published var defaultPromptID: UUID? = nil
+    @Published var countdownProgress: Double = 1.0
+    @Published var isEnteringCustomPrompt: Bool = false
+    @Published var customPromptText: String = ""
+
     // Session-only position (not persisted, resets on app quit)
     var currentPosition: NSPoint?
     

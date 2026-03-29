@@ -8,11 +8,13 @@ struct DictationView: View {
     @EnvironmentObject var claudePromptManager: ClaudePromptManager
 
     var body: some View {
-        VStack(spacing: 16) {
-            DictationSettingsView(viewModel: viewModel, claudeService: claudeService, claudePromptManager: claudePromptManager)
-            DictationRecordingView(viewModel: viewModel)
+        ScrollView {
+            VStack(spacing: 16) {
+                DictationSettingsView(viewModel: viewModel, claudeService: claudeService, claudePromptManager: claudePromptManager)
+                DictationRecordingView(viewModel: viewModel)
+            }
+            .padding(.vertical, 8)
         }
-        .padding(.vertical, 8)
         .onAppear {
             viewModel.contentViewModel = contentViewModel
         }

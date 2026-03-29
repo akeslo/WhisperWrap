@@ -57,12 +57,12 @@ class ClaudeService: ObservableObject {
 
     /// Process text through Claude CLI, streaming output line by line.
     /// The returned stream guarantees temp file cleanup on completion or cancellation.
-    func process(text: String, prompt: String) -> AsyncStream<String> {
+    func process(text: String, prompt: String, model: String = "sonnet") -> AsyncStream<String> {
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("claude_input_\(UUID().uuidString).txt")
         let fullPrompt = "\(prompt)\n\n---\n\n\(text)"
         try? fullPrompt.write(to: tempFile, atomically: true, encoding: .utf8)
 
-        let command = "cat \"\(tempFile.path)\" | claude --print"
+        let command = "cat \"\(tempFile.path)\" | claude --print --model \(model)"
         let innerStream = shell.streamCommand(command)
 
         return AsyncStream { continuation in

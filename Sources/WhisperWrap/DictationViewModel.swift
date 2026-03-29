@@ -70,6 +70,16 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             }
         }
     }
+    @Published var selectedClaudeModel: String = "sonnet" {
+        didSet {
+            UserDefaults.standard.set(selectedClaudeModel, forKey: "dictationClaudeModel")
+        }
+    }
+    @Published var promptSelectionMode: Bool = false {
+        didSet {
+            UserDefaults.standard.set(promptSelectionMode, forKey: "dictationPromptSelectionMode")
+        }
+    }
 
     enum ActiveAlert: Identifiable {
         case accessibility
@@ -130,8 +140,12 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
            let uuid = UUID(uuidString: savedID) {
             self.selectedClaudePromptID = uuid
         } else {
-            self.selectedClaudePromptID = ClaudePrompt.builtinCleanUp.id
+            self.selectedClaudePromptID = ClaudePrompt.builtinPolish.id
         }
+        if let savedModel = UserDefaults.standard.string(forKey: "dictationClaudeModel") {
+            self.selectedClaudeModel = savedModel
+        }
+        self.promptSelectionMode = UserDefaults.standard.bool(forKey: "dictationPromptSelectionMode")
 
         super.init()
 
@@ -557,8 +571,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 self.transcriptionTask = nil
                 if self.showHUD {
                     Task { @MainActor in
+                        HUDWindowController.shared.clearStreamingText(animated: false)
                         HUDWindowController.shared.hide()
-                        HUDWindowController.shared.clearStreamingText()
                     }
                 }
             }
@@ -569,32 +583,56 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 // Check if cancelled before continuing
                 if Task.isCancelled { return }
 
-                // Claude processing (if enabled)
+                // Claude processing (if enabled and there's text to process)
                 if claudeEnabled,
+                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                    let claudeService = claudeService,
-                   let claudePromptManager = claudePromptManager,
-                   let promptID = selectedClaudePromptID,
-                   let prompt = claudePromptManager.allPrompts.first(where: { $0.id == promptID }) {
+                   let claudePromptManager = claudePromptManager {
 
-                    if showHUD {
-                        HUDWindowController.shared.setStatus(.processingWithClaude)
-                    }
+                    // Determine which prompt to use
+                    var selectedPromptText: String?
 
-                    let stream = claudeService.process(text: text, prompt: prompt.prompt)
-                    var streamedResult = ""
-                    for await chunk in stream {
+                    if promptSelectionMode && showHUD {
+                        let defaultID = selectedClaudePromptID ?? ClaudePrompt.builtinPolish.id
+                        let result = await HUDWindowController.shared.showPromptSelection(
+                            prompts: claudePromptManager.allPrompts,
+                            defaultID: defaultID
+                        )
                         if Task.isCancelled { return }
-                        streamedResult += chunk
-                        if showHUD {
-                            HUDWindowController.shared.updateStreamingText(streamedResult)
+                        switch result {
+                        case .selected(let prompt):
+                            selectedPromptText = prompt.prompt
+                        case .custom(let customText):
+                            selectedPromptText = customText
+                        case .skipped, .cancelled:
+                            selectedPromptText = nil
                         }
+                    } else if let promptID = selectedClaudePromptID,
+                              let prompt = claudePromptManager.allPrompts.first(where: { $0.id == promptID }) {
+                        selectedPromptText = prompt.prompt
                     }
 
-                    let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
-                        text = trimmed
-                    } else if ClaudeService.looksLikeError(trimmed) {
-                        claudeService.isConnected = false
+                    if let promptText = selectedPromptText {
+                        if showHUD {
+                            HUDWindowController.shared.setStatus(.processingWithClaude)
+                        }
+
+                        let stream = claudeService.process(text: text, prompt: promptText, model: selectedClaudeModel)
+                        var streamedResult = ""
+                        for await chunk in stream {
+                            if Task.isCancelled { return }
+                            streamedResult += chunk
+                            if showHUD {
+                                HUDWindowController.shared.updateStreamingText(streamedResult)
+                            }
+                        }
+
+                        let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
+                            text = trimmed
+                        } else if ClaudeService.looksLikeError(trimmed) {
+                            claudeService.isConnected = false
+                        }
                     }
                 }
 

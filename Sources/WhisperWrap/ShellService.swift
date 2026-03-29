@@ -50,13 +50,23 @@ final class ShellService: @unchecked Sendable {
 
             pipe.fileHandleForReading.readabilityHandler = { fileHandle in
                 let data = fileHandle.availableData
-                if let line = String(data: data, encoding: .utf8) {
-                    continuation.yield(line)
+                guard !data.isEmpty else {
+                    // EOF — stop handler, don't yield empty strings
+                    fileHandle.readabilityHandler = nil
+                    return
+                }
+                if let text = String(data: data, encoding: .utf8) {
+                    continuation.yield(text)
                 }
             }
 
-            process.terminationHandler = { process in
+            process.terminationHandler = { _ in
+                // Stop handler first, then drain any remaining data
                 pipe.fileHandleForReading.readabilityHandler = nil
+                let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
+                if !remaining.isEmpty, let text = String(data: remaining, encoding: .utf8) {
+                    continuation.yield(text)
+                }
                 continuation.finish()
             }
 

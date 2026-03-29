@@ -59,7 +59,7 @@ class ContentViewModel: ObservableObject {
            let uuid = UUID(uuidString: savedID) {
             self.fileClaudePromptID = uuid
         } else {
-            self.fileClaudePromptID = ClaudePrompt.builtinCleanUp.id
+            self.fileClaudePromptID = ClaudePrompt.builtinPolish.id
         }
         checkDependencies()
         cleanupOldTempFiles()
@@ -184,14 +184,18 @@ class ContentViewModel: ObservableObject {
                    let promptID = fileClaudePromptID,
                    let prompt = claudePromptManager.allPrompts.first(where: { $0.id == promptID }) {
 
+                    // Read the transcription text
+                    let transcriptionText = try String(contentsOf: outputURL, encoding: .utf8)
+
+                    if transcriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        consoleOutput += "⚠️ Transcription was empty, skipping Claude processing\n"
+                    } else {
                     processingStage = "Processing with Claude..."
                     consoleOutput += "\n🧠 Processing transcription with Claude (\(prompt.name))...\n"
                     claudeStreamingOutput = ""
 
-                    // Read the transcription text
-                    let transcriptionText = try String(contentsOf: outputURL, encoding: .utf8)
-
-                    let stream = claudeService.process(text: transcriptionText, prompt: prompt.prompt)
+                    let claudeModel = UserDefaults.standard.string(forKey: "dictationClaudeModel") ?? "sonnet"
+                    let stream = claudeService.process(text: transcriptionText, prompt: prompt.prompt, model: claudeModel)
                     var streamedResult = ""
                     for await chunk in stream {
                         if Task.isCancelled { break }
@@ -208,6 +212,7 @@ class ContentViewModel: ObservableObject {
                         consoleOutput += "⚠️ Claude processing failed, using raw transcription\n"
                     }
                     claudeStreamingOutput = ""
+                    }
                 }
 
                 processingStage = "Saving transcription..."

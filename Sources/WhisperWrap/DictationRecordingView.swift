@@ -73,8 +73,6 @@ struct DictationRecordingView: View {
                     .font(.caption)
                     .foregroundColor(.accentColor)
                 }
-            } else {
-                Spacer()
             }
             
             // MARK: - Controls
