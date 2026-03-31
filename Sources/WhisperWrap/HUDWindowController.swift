@@ -162,10 +162,19 @@ class HUDWindowController: NSWindowController {
             let newHeight: CGFloat = hasText ? 280 : 80
             let newWidth: CGFloat = hasText ? 500 : 450
             var frame = panel.frame
-            let heightDiff = newHeight - frame.height
+            // Keep bottom edge anchored, grow upward (macOS y-up coordinate system)
             frame.size.height = newHeight
             frame.size.width = newWidth
-            frame.origin.y -= heightDiff // Grow upward
+            // Ensure window stays on screen
+            if let screen = panel.screen ?? NSScreen.main {
+                let screenRect = screen.visibleFrame
+                if frame.origin.y < screenRect.minY {
+                    frame.origin.y = screenRect.minY + 10
+                }
+                if frame.origin.y + frame.size.height > screenRect.maxY {
+                    frame.origin.y = screenRect.maxY - frame.size.height - 10
+                }
+            }
             panel.setFrame(frame, display: true, animate: true)
         }
     }
@@ -175,13 +184,36 @@ class HUDWindowController: NSWindowController {
         // Reset window size
         if let panel = window {
             var frame = panel.frame
-            let heightDiff = 80 - frame.height
             frame.size.height = 80
             frame.size.width = 450
-            frame.origin.y -= heightDiff
             panel.setFrame(frame, display: true, animate: animated)
         }
     }
+
+    /// Show results for a duration then fade out and hide
+    func showResultsThenFade(duration: TimeInterval = 5.0, fadeDuration: TimeInterval = 0.5) {
+        guard let panel = window else { return }
+        // Cancel any pending fade timer
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, let panel = self.window else { return }
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = fadeDuration
+                    panel.animator().alphaValue = 0
+                }, completionHandler: { [weak self] in
+                    guard let self = self else { return }
+                    self.clearStreamingText(animated: false)
+                    self.hide()
+                    panel.alphaValue = 1 // Reset for next show
+                })
+            }
+        }
+    }
+
+    private var fadeTimer: Timer?
 
     // MARK: - Prompt Selection
 

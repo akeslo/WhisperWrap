@@ -601,13 +601,19 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isProcessing = true
 
         transcriptionTask = Task {
+            var didShowClaudeResults = false
             defer {
                 self.isProcessing = false
                 self.transcriptionTask = nil
                 if self.showHUD {
                     Task { @MainActor in
-                        HUDWindowController.shared.clearStreamingText(animated: false)
-                        HUDWindowController.shared.hide()
+                        if didShowClaudeResults {
+                            // Show results for 5s then fade out
+                            HUDWindowController.shared.showResultsThenFade(duration: 5.0)
+                        } else {
+                            HUDWindowController.shared.clearStreamingText(animated: false)
+                            HUDWindowController.shared.hide()
+                        }
                     }
                 }
             }
@@ -665,6 +671,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                         let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
                             text = trimmed
+                            didShowClaudeResults = showHUD && !streamedResult.isEmpty
                         } else if ClaudeService.looksLikeError(trimmed) {
                             claudeService.isConnected = false
                         }
