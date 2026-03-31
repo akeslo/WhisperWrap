@@ -6,20 +6,46 @@ struct HUDView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if state.showingDevicePicker && state.status == .listening {
+                HUDDevicePickerView(state: state)
+                Divider()
+            }
+
             HStack(spacing: 12) {
                 Image(systemName: hudIcon)
                     .font(.title2)
                     .foregroundColor(hudIconColor)
                     .symbolEffect(.pulse, isActive: state.status == .listening)
+                    .onTapGesture {
+                        if state.status == .listening {
+                            toggleDevicePicker()
+                        }
+                    }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("WhisperWrap")
                         .font(.headline)
                         .fixedSize()
-                    Text(hudStatusText)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize()
+                    HStack(spacing: 4) {
+                        Text(hudStatusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize()
+                        if state.status == .listening, let deviceName = selectedDeviceName {
+                            Text("·")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(deviceName)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .onTapGesture {
+                    if state.status == .listening {
+                        toggleDevicePicker()
+                    }
                 }
 
                 Spacer()
@@ -175,6 +201,18 @@ struct HUDView: View {
         .padding(10)
     }
 
+    private func toggleDevicePicker() {
+        if state.showingDevicePicker {
+            HUDWindowController.shared.hideDevicePicker()
+        } else {
+            HUDWindowController.shared.showDevicePicker()
+        }
+    }
+
+    private var selectedDeviceName: String? {
+        state.availableDevices.first(where: { $0.id == state.selectedDeviceID })?.name
+    }
+
     private var hudIcon: String {
         switch state.status {
         case .listening: return "mic.fill"
@@ -200,5 +238,42 @@ struct HUDView: View {
         case .selectingPrompt: return "Select prompt"
         case .processingWithClaude: return "Processing with Claude..."
         }
+    }
+}
+
+private struct HUDDevicePickerView: View {
+    @ObservedObject var state: HUDState
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ForEach(state.availableDevices, id: \.id) { device in
+                let isSelected = device.id == state.selectedDeviceID
+                Button(action: {
+                    HUDWindowController.shared.selectDevice(device.id)
+                    HUDWindowController.shared.hideDevicePicker()
+                }) {
+                    HStack {
+                        Text(device.name)
+                            .font(.caption)
+                        Spacer()
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 10)
     }
 }

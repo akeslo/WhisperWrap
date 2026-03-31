@@ -24,9 +24,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dictationViewModel.claudePromptManager = claudePromptManager
         contentViewModel.claudeService = claudeService
         contentViewModel.claudePromptManager = claudePromptManager
-        
+
         // Setup Menu Bar immediately on launch
         MenuBarManager.shared.setup(dictationViewModel: dictationViewModel, contentViewModel: contentViewModel)
+
+        // Check if app is in ~/Applications
+        checkAppLocation()
         
         // Observe window notifications to show/hide dock icon
         NotificationCenter.default.addObserver(
@@ -137,6 +140,115 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             try? (text + "\n").write(to: url, atomically: true, encoding: .utf8)
         }
+    }
+
+    // MARK: - App Location Check
+
+    private func checkAppLocation() {
+        let bundlePath = Bundle.main.bundlePath
+        // Already in /Applications
+        if bundlePath.hasPrefix("/Applications") { return }
+
+        // Don't nag if user already dismissed
+        if UserDefaults.standard.bool(forKey: "dismissedAppLocationPrompt") { return }
+
+        // Don't prompt during development builds from Xcode or swift build
+        if bundlePath.contains(".build/") || bundlePath.contains("DerivedData") { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.showMoveToApplicationsAlert()
+        }
+    }
+
+    private func showMoveToApplicationsAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Move to Applications?"
+        alert.informativeText = "WhisperWrap is running from:\n\(Bundle.main.bundlePath)\n\nWould you like to move it to /Applications for easier access and updates?"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Move to /Applications")
+        alert.addButton(withTitle: "Not Now")
+        alert.addButton(withTitle: "Don't Ask Again")
+
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            moveToApplicationsFolder()
+        case .alertThirdButtonReturn:
+            UserDefaults.standard.set(true, forKey: "dismissedAppLocationPrompt")
+        default:
+            break
+        }
+    }
+
+    private func moveToApplicationsFolder() {
+        let fileManager = FileManager.default
+        let appsDir = URL(fileURLWithPath: "/Applications")
+        let source = URL(fileURLWithPath: Bundle.main.bundlePath)
+        let appName = source.lastPathComponent
+        let destination = appsDir.appendingPathComponent(appName)
+
+        logToFile("Move: source=\(source.path) dest=\(destination.path)")
+        logToFile("Move: source exists=\(fileManager.fileExists(atPath: source.path)) isDir=\(source.hasDirectoryPath)")
+
+        // Verify /Applications exists
+        guard fileManager.fileExists(atPath: appsDir.path) else {
+            logToFile("Move: /Applications does not exist")
+            showMoveError("/Applications folder not found")
+            return
+        }
+
+        // Remove existing copy at destination
+        if fileManager.fileExists(atPath: destination.path) {
+            logToFile("Move: removing existing at destination")
+            do {
+                try fileManager.removeItem(at: destination)
+            } catch {
+                logToFile("Move: FAILED to remove existing: \(error)")
+                showMoveError("Could not replace existing app: \(error.localizedDescription)")
+                return
+            }
+        }
+
+        // Copy to ~/Applications
+        do {
+            try fileManager.copyItem(at: source, to: destination)
+            logToFile("Move: copy succeeded, exists at dest=\(fileManager.fileExists(atPath: destination.path))")
+        } catch {
+            logToFile("Move: FAILED to copy: \(error)")
+            showMoveError("Could not move app: \(error.localizedDescription)")
+            return
+        }
+
+        // Relaunch from new location using a fully detached process
+        logToFile("Move: attempting relaunch from \(destination.path)")
+        let escapedDest = destination.path.replacingOccurrences(of: "'", with: "'\\''")
+        let escapedSource = source.path.replacingOccurrences(of: "'", with: "'\\''")
+        let script = "sleep 1 && rm -rf '\(escapedSource)' && open '\(escapedDest)'"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
+        task.arguments = ["/bin/bash", "-c", script]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        task.qualityOfService = .background
+        do {
+            try task.run()
+            logToFile("Move: detached relaunch started, terminating current instance")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NSApp.terminate(nil)
+            }
+        } catch {
+            logToFile("Move: FAILED to launch relaunch script: \(error)")
+            showMoveError("Could not relaunch app: \(error.localizedDescription)")
+        }
+    }
+
+    private func showMoveError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Move Failed"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @MainActor @objc private func windowDidBecomeVisible(_ notification: Notification) {

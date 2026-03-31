@@ -333,6 +333,35 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
 
+    func switchAudioDevice(_ deviceID: String) {
+        selectedAudioDeviceID = deviceID
+        if isRecording {
+            // Restart recording with new device
+            audioRecorder?.stop()
+            stopMonitoring()
+            setDefaultInputDevice(deviceID)
+
+            do {
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.m4a")
+                let settings: [String: Any] = [
+                    AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                    AVSampleRateKey: 12000,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                ]
+                audioRecorder = try AVAudioRecorder(url: url, settings: settings)
+                audioRecorder?.delegate = self
+                audioRecorder?.isMeteringEnabled = true
+                audioRecorder?.record()
+                startMonitoring()
+            } catch {
+                print("Error restarting recording with new device: \(error.localizedDescription)")
+            }
+        } else {
+            setDefaultInputDevice(deviceID)
+        }
+    }
+
     private func setDefaultInputDevice(_ deviceIDString: String) {
         guard let deviceID = AudioDeviceID(deviceIDString) else {
             return
@@ -486,9 +515,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 
                 if showHUD {
                     HUDWindowController.shared.setStatus(.listening)
+                    HUDWindowController.shared.setAudioDevices(availableAudioDevices, selectedID: selectedAudioDeviceID)
                     HUDWindowController.shared.closeHandler = { [weak self] in
                         Task { @MainActor in
                             self?.stopRecording()
+                        }
+                    }
+                    HUDWindowController.shared.deviceChangeHandler = { [weak self] deviceID in
+                        Task { @MainActor in
+                            self?.switchAudioDevice(deviceID)
                         }
                     }
                     HUDWindowController.shared.show()

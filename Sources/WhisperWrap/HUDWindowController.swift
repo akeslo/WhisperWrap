@@ -13,6 +13,7 @@ class HUDWindowController: NSWindowController {
 
     private let hudState = HUDState()
     var closeHandler: (() -> Void)?
+    var deviceChangeHandler: ((String) -> Void)?
 
     private var promptSelectionContinuation: CheckedContinuation<PromptSelectionResult, Never>?
     private var countdownTimer: Timer?
@@ -98,6 +99,59 @@ class HUDWindowController: NSWindowController {
     
     func setStatus(_ status: HUDState.HUDStatus) {
         hudState.status = status
+        if status != .listening {
+            hudState.showingDevicePicker = false
+        }
+    }
+
+    func setAudioDevices(_ devices: [(id: String, name: String)], selectedID: String?) {
+        hudState.availableDevices = devices
+        hudState.selectedDeviceID = selectedID
+    }
+
+    func selectDevice(_ deviceID: String) {
+        hudState.selectedDeviceID = deviceID
+        deviceChangeHandler?(deviceID)
+    }
+
+    private var prePickerFrame: NSRect?
+
+    func showDevicePicker() {
+        guard let panel = window, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        // Save current position to restore later
+        prePickerFrame = panel.frame
+
+        hudState.showingDevicePicker = true
+
+        let rowHeight: CGFloat = 30
+        let pickerHeight = CGFloat(hudState.availableDevices.count) * rowHeight + 20
+        let newHeight: CGFloat = 80 + pickerHeight
+        let newWidth: CGFloat = panel.frame.width
+
+        // Center on screen
+        let screenFrame = screen.visibleFrame
+        let x = screenFrame.midX - newWidth / 2
+        let y = screenFrame.midY - newHeight / 2
+        let centeredFrame = NSRect(x: x, y: y, width: newWidth, height: newHeight)
+
+        panel.setFrame(centeredFrame, display: true, animate: true)
+    }
+
+    func hideDevicePicker() {
+        guard let panel = window else { return }
+        hudState.showingDevicePicker = false
+
+        // Restore to original position
+        if let savedFrame = prePickerFrame {
+            panel.setFrame(savedFrame, display: true, animate: true)
+            prePickerFrame = nil
+        } else {
+            var frame = panel.frame
+            let heightDiff = 80 - frame.height
+            frame.size.height = 80
+            frame.origin.y -= heightDiff
+            panel.setFrame(frame, display: true, animate: true)
+        }
     }
 
     func updateStreamingText(_ text: String) {

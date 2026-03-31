@@ -23,6 +23,11 @@ class HUDState: ObservableObject {
     @Published var isEnteringCustomPrompt: Bool = false
     @Published var customPromptText: String = ""
 
+    // Audio device selection
+    @Published var availableDevices: [(id: String, name: String)] = []
+    @Published var selectedDeviceID: String?
+    @Published var showingDevicePicker: Bool = false
+
     // Session-only position (not persisted, resets on app quit)
     var currentPosition: NSPoint?
     

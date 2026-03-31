@@ -116,16 +116,25 @@ class ContentViewModel: ObservableObject {
     func transcribeDictation(audioURL: URL, model: Model) async throws -> String {
         // Ensure model is ready (using base model for dictation speed/quality balance)
         // Convert to compatible format if needed? runWhisper handles it.
-        
+
         let outputURL = try await runWhisper(on: audioURL, model: model, format: "txt", testMode: false)
-        
-        // Read the content
-        let transcription = try String(contentsOf: outputURL, encoding: .utf8)
-        
+
+        // Read the content — file may not exist if no speech was detected
+        let transcription: String
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            transcription = try String(contentsOf: outputURL, encoding: .utf8)
+        } else {
+            transcription = ""
+        }
+
         // Clean up
         try? FileManager.default.removeItem(at: audioURL)
         try? FileManager.default.removeItem(at: outputURL)
-        
+
+        if transcription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "No Speech Detected"
+        }
+
         return transcription
     }
 

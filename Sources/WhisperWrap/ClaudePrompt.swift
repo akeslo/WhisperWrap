@@ -16,7 +16,7 @@ struct ClaudePrompt: Identifiable, Codable, Equatable {
     static let builtinPolish = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         name: "Polish",
-        prompt: "Polish this text for a casual professional setting. Fix grammar, punctuation, and remove filler words. Smooth out rough phrasing while keeping the tone natural and conversational — not stiff or overly formal. Preserve the speaker's voice and original meaning. Return only the polished text. Never ask questions or request clarification — always produce your best output from whatever input is given.",
+        prompt: "Act as an expert copy editor. Polish the provided text for a casual professional setting. Correct grammar and punctuation while removing filler words. Smooth the phrasing to sound natural and conversational, avoiding rigid formality.  Do not use \"-\". Preserve the original voice and meaning entirely. Output only the revised text. Make your best assumptions and provide the final result without asking questions.",
         isBuiltin: true
     )
 
@@ -37,7 +37,7 @@ struct ClaudePrompt: Identifiable, Codable, Equatable {
     static let builtinCodeEngineer = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
         name: "Code Engineer",
-        prompt: "Refactor this into minimal, direct instructions for a senior full-stack engineer who will implement everything provided. Max 3 sentences. Format as a breakdown of tasks and requirements. Never ask questions or request clarification — always produce your best output from whatever input is given.",
+        prompt: "Process this input as a senior full-stack engineer and generate a concise implementation breakdown (maximum 3 sentences). Output only the direct tasks and requirements needed to build it. Make your best assumptions and provide a complete, actionable solution without requesting clarification.",
         isBuiltin: true
     )
 
