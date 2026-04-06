@@ -156,13 +156,14 @@ class HUDWindowController: NSWindowController {
 
     func updateStreamingText(_ text: String) {
         hudState.streamingText = text
-        // Resize window to fit content when streaming
+        // Resize window to fit content when streaming — only if size actually changes
         if let panel = window {
             let hasText = !text.isEmpty
             let newHeight: CGFloat = hasText ? 280 : 80
             let newWidth: CGFloat = hasText ? 500 : 450
-            var frame = panel.frame
-            // Keep bottom edge anchored, grow upward (macOS y-up coordinate system)
+            let currentFrame = panel.frame
+            guard abs(currentFrame.size.height - newHeight) > 1 || abs(currentFrame.size.width - newWidth) > 1 else { return }
+            var frame = currentFrame
             frame.size.height = newHeight
             frame.size.width = newWidth
             // Ensure window stays on screen
@@ -191,11 +192,23 @@ class HUDWindowController: NSWindowController {
     }
 
     /// Show results for a duration then fade out and hide
-    func showResultsThenFade(duration: TimeInterval = 5.0, fadeDuration: TimeInterval = 0.5) {
+    func showResultsThenFade(duration: TimeInterval = 15.0, fadeDuration: TimeInterval = 1.0) {
         guard let panel = window else { return }
+        // Switch to results display state so the text stays visible
+        hudState.status = .showingResults
         // Cancel any pending fade timer
         fadeTimer?.invalidate()
         fadeTimer = nil
+
+        // Expand height to fit copy footer
+        var frame = panel.frame
+        let targetHeight: CGFloat = 315
+        if abs(frame.size.height - targetHeight) > 1 {
+            let delta = targetHeight - frame.size.height
+            frame.size.height = targetHeight
+            frame.origin.y -= delta
+            panel.setFrame(frame, display: true, animate: true)
+        }
 
         fadeTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
             Task { @MainActor in
@@ -204,10 +217,12 @@ class HUDWindowController: NSWindowController {
                     context.duration = fadeDuration
                     panel.animator().alphaValue = 0
                 }, completionHandler: { [weak self] in
-                    guard let self = self else { return }
-                    self.clearStreamingText(animated: false)
-                    self.hide()
-                    panel.alphaValue = 1 // Reset for next show
+                    MainActor.assumeIsolated {
+                        guard let self = self else { return }
+                        self.clearStreamingText(animated: false)
+                        self.hide()
+                        panel.alphaValue = 1 // Reset for next show
+                    }
                 })
             }
         }

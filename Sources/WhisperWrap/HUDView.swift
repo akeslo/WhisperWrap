@@ -1,8 +1,10 @@
 import SwiftUI
+import AppKit
 
 struct HUDView: View {
     @ObservedObject var state: HUDState
     var onClose: () -> Void
+    @State private var showCopied = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,7 +52,7 @@ struct HUDView: View {
 
                 Spacer()
 
-                if state.status != .processingWithClaude && state.status != .selectingPrompt {
+                if state.status != .processingWithClaude && state.status != .selectingPrompt && state.status != .showingResults {
                     // Visualizer - organic "dancing" bars
                     HStack(spacing: 4) {
                         ForEach(0..<20) { index in
@@ -172,14 +174,14 @@ struct HUDView: View {
                 .padding(.bottom, 10)
             }
 
-            if state.status == .processingWithClaude && !state.streamingText.isEmpty {
+            if (state.status == .processingWithClaude || state.status == .showingResults) && !state.streamingText.isEmpty {
                 Divider()
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(state.streamingText)
                             .font(.system(.body, design: .default))
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
+                            .padding(12)
                             .textSelection(.enabled)
                             .id("streamBottom")
                     }
@@ -190,15 +192,58 @@ struct HUDView: View {
                         }
                     }
                 }
+
+                if state.status == .showingResults {
+                    Divider()
+                    HStack {
+                        Spacer()
+                        Button(action: copyToClipboard) {
+                            HStack(spacing: 5) {
+                                Image(systemName: showCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text(showCopied ? "Copied!" : "Copy")
+                                    .font(.system(.caption, weight: .medium))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(showCopied ? Color.green.opacity(0.15) : Color.secondary.opacity(0.12))
+                            )
+                            .foregroundColor(showCopied ? .green : .primary)
+                        }
+                        .buttonStyle(.plain)
+                        .animation(.easeInOut(duration: 0.15), value: showCopied)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
             }
         }
         .background(.regularMaterial)
         .cornerRadius(20)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                .stroke(
+                    state.status == .showingResults
+                        ? Color.green.opacity(0.35)
+                        : Color.secondary.opacity(0.2),
+                    lineWidth: state.status == .showingResults ? 1.5 : 1
+                )
         )
+        .shadow(color: state.status == .showingResults ? Color.green.opacity(0.12) : .clear, radius: 10)
+        .animation(.easeInOut(duration: 0.3), value: state.status == .showingResults)
         .padding(10)
+    }
+
+    private func copyToClipboard() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(state.streamingText, forType: .string)
+        showCopied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            showCopied = false
+        }
     }
 
     private func toggleDevicePicker() {
@@ -219,6 +264,7 @@ struct HUDView: View {
         case .transcribing: return "waveform.circle.fill"
         case .selectingPrompt: return "brain"
         case .processingWithClaude: return "brain"
+        case .showingResults: return "checkmark.circle.fill"
         }
     }
 
@@ -228,6 +274,7 @@ struct HUDView: View {
         case .transcribing: return .orange
         case .selectingPrompt: return .purple
         case .processingWithClaude: return .purple
+        case .showingResults: return .green
         }
     }
 
@@ -237,6 +284,7 @@ struct HUDView: View {
         case .transcribing: return "Transcribing..."
         case .selectingPrompt: return "Select prompt"
         case .processingWithClaude: return "Processing with Claude..."
+        case .showingResults: return "Done"
         }
     }
 }

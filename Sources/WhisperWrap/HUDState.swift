@@ -8,6 +8,7 @@ class HUDState: ObservableObject {
         case transcribing
         case selectingPrompt
         case processingWithClaude
+        case showingResults
     }
 
     @Published var audioLevel: Float = 0.0
