@@ -7,6 +7,14 @@ final class ShellService: @unchecked Sendable {
 
     init() {}
 
+    private static let enrichedEnvironment: [String: String] = {
+        var env = ProcessInfo.processInfo.environment
+        let extraPaths = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"]
+        let current = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = (extraPaths + [current]).joined(separator: ":")
+        return env
+    }()
+
     nonisolated func runCommand(_ command: String) async throws -> String {
         let process = Process()
         let pipe = Pipe()
@@ -16,6 +24,7 @@ final class ShellService: @unchecked Sendable {
         process.standardError = pipe
         process.arguments = ["-c", command]
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.environment = ShellService.enrichedEnvironment
         
         return try await withCheckedThrowingContinuation { continuation in
             process.terminationHandler = { process in
@@ -47,6 +56,7 @@ final class ShellService: @unchecked Sendable {
             process.standardError = pipe
             process.arguments = ["-c", command]
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.environment = ShellService.enrichedEnvironment
 
             pipe.fileHandleForReading.readabilityHandler = { fileHandle in
                 let data = fileHandle.availableData
