@@ -83,7 +83,7 @@ final class PermissionsManager: ObservableObject {
         return probeSucceeds ? .healthy : .broken
     }
 
-    private func probeMicrophone() async -> Bool {
+    nonisolated private func probeMicrophone() async -> Bool {
         guard AVCaptureDevice.default(for: .audio) != nil else { return false }
 
         let engine = AVAudioEngine()
