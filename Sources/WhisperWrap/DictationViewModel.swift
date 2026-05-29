@@ -4,6 +4,7 @@ import Combine
 import ServiceManagement
 import Carbon
 import CoreAudio
+import UserNotifications
 
 @MainActor
 class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
@@ -117,6 +118,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var recordingTimer: Timer?
     private var meterTimer: Timer?
     private var transcriptionTask: Task<Void, Never>?
+    private var silentMonitor = SilentRecordingMonitor()
+    private var silentNotificationPosted = false
     
     override init() {
         self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
@@ -342,12 +345,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             setDefaultInputDevice(deviceID)
 
             do {
-                let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.m4a")
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.wav")
                 let settings: [String: Any] = [
-                    AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                    AVSampleRateKey: 12000,
+                    AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                    AVSampleRateKey: 16000,
                     AVNumberOfChannelsKey: 1,
-                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false
                 ]
                 audioRecorder = try AVAudioRecorder(url: url, settings: settings)
                 audioRecorder?.delegate = self
@@ -494,13 +499,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             // try audioSession.setCategory(.playAndRecord, mode: .default)
             // try audioSession.setActive(true) // Unnecessary/Unavailable on macOS
 
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.m4a")
-            
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.wav")
+
             let settings: [String: Any] = [
-                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                AVSampleRateKey: 12000,
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 16000,
                 AVNumberOfChannelsKey: 1,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false
             ]
             
             audioRecorder = try AVAudioRecorder(url: url, settings: settings)
@@ -567,7 +574,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = dateFormatter.string(from: Date())
-        let filename = "recording_\(timestamp).m4a"
+        let filename = "recording_\(timestamp).wav"
         let destinationURL = directory.appendingPathComponent(filename)
 
         do {
@@ -619,7 +626,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             }
 
             do {
-                var text = try await contentViewModel.transcribeDictation(audioURL: url, model: selectedModel)
+                // VAD: trim silence before transcription
+                let vadProcessor = FluidVADProcessor()
+                let processedURL = await vadProcessor.trimSilence(audioURL: url) ?? url
+                let didTrim = processedURL != url
+                defer {
+                    if didTrim { try? FileManager.default.removeItem(at: processedURL) }
+                }
+
+                var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel)
 
                 // Check if cancelled before continuing
                 if Task.isCancelled { return }
@@ -748,6 +763,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     // MARK: - Audio Metering
     
     private func startMonitoring() {
+        silentMonitor.reset()
+        silentNotificationPosted = false
         meterTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             Task { @MainActor in
@@ -757,6 +774,25 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 let power = recorder.averagePower(forChannel: 0)
                 let normalized = max(0.0, (power + 160) / 160)
                 self.audioLevel = normalized
+
+                // Feed raw dBFS into silent-recording monitor
+                if let event = self.silentMonitor.update(micDBFS: Double(power)) {
+                    switch event {
+                    case .started:
+                        if !self.silentNotificationPosted {
+                            self.silentNotificationPosted = true
+                            self.postSilentMicNotification()
+                        }
+                    case .recovered:
+                        self.silentNotificationPosted = false
+                        UNUserNotificationCenter.current().removePendingNotificationRequests(
+                            withIdentifiers: ["whisperwrap.silent-mic"]
+                        )
+                        UNUserNotificationCenter.current().removeDeliveredNotifications(
+                            withIdentifiers: ["whisperwrap.silent-mic"]
+                        )
+                    }
+                }
             }
         }
     }
@@ -765,6 +801,23 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         meterTimer?.invalidate()
         meterTimer = nil
         audioLevel = 0
+    }
+
+    private func postSilentMicNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "No audio detected"
+        content.body = "Your microphone has been silent for 90 seconds. Check your mic or stop recording."
+        content.categoryIdentifier = "WW_SILENT_MIC"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "whisperwrap.silent-mic",
+            content: content,
+            trigger: nil  // deliver immediately
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { print("Silent mic notification error: \(error)") }
+        }
     }
     
     // MARK: - AVAudioRecorderDelegate

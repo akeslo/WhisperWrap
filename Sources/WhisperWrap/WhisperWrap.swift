@@ -4,6 +4,36 @@
 import Combine
 import SwiftUI
 import AppKit
+import UserNotifications
+
+final class WWNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+    static let shared = WWNotificationDelegate()
+
+    // Allow notifications to show while app is in foreground
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+
+    // Handle "Stop Recording" action tap
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.actionIdentifier == "WW_STOP_RECORDING" {
+            Task { @MainActor in
+                if let delegate = NSApp.delegate as? AppDelegate {
+                    delegate.dictationViewModel.stopRecording()
+                }
+            }
+        }
+        completionHandler()
+    }
+}
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -25,8 +55,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentViewModel.claudeService = claudeService
         contentViewModel.claudePromptManager = claudePromptManager
 
+        // Notification setup
+        let notifCenter = UNUserNotificationCenter.current()
+        notifCenter.delegate = WWNotificationDelegate.shared
+        let stopAction = UNNotificationAction(
+            identifier: "WW_STOP_RECORDING",
+            title: "Stop Recording",
+            options: [.foreground]
+        )
+        let silentCategory = UNNotificationCategory(
+            identifier: "WW_SILENT_MIC",
+            actions: [stopAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        notifCenter.setNotificationCategories([silentCategory])
+        notifCenter.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+
         // Setup Menu Bar immediately on launch
         MenuBarManager.shared.setup(dictationViewModel: dictationViewModel, contentViewModel: contentViewModel)
+
+        // Run permission health check on startup
+        Task { await PermissionsManager.shared.runHealthCheck() }
 
         // Check if app is in ~/Applications
         checkAppLocation()
@@ -85,28 +135,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         
-        // Check startup state after environment check settles
-        // We wait for isCheckingEnv to go from true -> false
-        contentViewModel.$isCheckingEnv
-            .receive(on: RunLoop.main)
-            .dropFirst() // Ignore initial value
-            .sink { [weak self] isChecking in
-                guard let self = self else { return }
-                if !isChecking {
-                    // Check complete. If not installed, we MUST show setup.
-                    if !self.contentViewModel.whisperInstalled {
-                        self.logToFile("Startup: Prereqs not met, forcing window open")
-                        print("Startup: Prereqs not met, forcing window open")
-                        self.shouldShowMainWindow = true
-                        self.showMainWindow()
-                    } else {
-                        self.logToFile("Startup: Prereqs met, staying hidden")
-                        print("Startup: Prereqs met, staying hidden")
-                    }
-                }
-            }
-            .store(in: &cancellables)
-            
+        // WhisperKit needs no setup — stay hidden at launch unless manually opened
+        logToFile("Startup: WhisperKit ready, staying hidden")
+        print("Startup: WhisperKit ready, staying hidden")
+
         // Force close check on launch
         if !shouldShowMainWindow {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -311,6 +343,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        Task { await PermissionsManager.shared.runHealthCheck() }
     }
 }
 

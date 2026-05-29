@@ -22,5 +22,16 @@ enum Model: String, CaseIterable, Identifiable {
             return self.rawValue
         }
     }
+
+    var whisperKitModelName: String {
+        switch self {
+        case .tiny:   return "openai_whisper-tiny"
+        case .base:   return "openai_whisper-base"
+        case .small:  return "openai_whisper-small"
+        case .medium: return "openai_whisper-medium"
+        case .large:  return "openai_whisper-large-v3"
+        case .turbo:  return "openai_whisper-large-v3-v20240930_turbo"
+        }
+    }
 }
 

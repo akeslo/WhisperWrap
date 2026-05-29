@@ -12,6 +12,7 @@ class MenuBarManager: NSObject, ObservableObject {
     private var contentViewModel: ContentViewModel?
     private var cancellables = Set<AnyCancellable>()
     private var isSetup = false
+    private var isPermissionUnhealthy = false
 
     private override init() {
         super.init()
@@ -70,6 +71,16 @@ class MenuBarManager: NSObject, ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // Observe health check results and show warning badge when unhealthy
+        PermissionsManager.shared.$healthResult
+            .receive(on: RunLoop.main)
+            .sink { [weak self] result in
+                let unhealthy = result.map { !$0.isHealthy } ?? false
+                self?.isPermissionUnhealthy = unhealthy
+                self?.updateIcon(isRecording: self?.dictationViewModel?.isRecording ?? false)
+            }
+            .store(in: &cancellables)
     }
     
     private func handleRecordingStateChange(isRecording: Bool) {
@@ -83,27 +94,31 @@ class MenuBarManager: NSObject, ObservableObject {
     
     private func updateIcon(isRecording: Bool) {
         guard let button = statusItem?.button else { return }
-        
-        // Ensure button properties are set for interactivity
         button.target = self
         button.action = #selector(statusBarButtonClicked)
         button.isEnabled = true
-        
+
         if isRecording {
-            // Red stop icon when recording
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
             if let image = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "Stop Recording") {
-                let coloredImage = image.withSymbolConfiguration(config)
-                coloredImage?.isTemplate = false
-                button.image = coloredImage
+                let colored = image.withSymbolConfiguration(config)
+                colored?.isTemplate = false
+                button.image = colored
+            }
+        } else if isPermissionUnhealthy {
+            // Red warning badge — permission broken
+            let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed, .systemRed])
+            if let image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Permission Issue") {
+                let colored = image.withSymbolConfiguration(config)
+                colored?.isTemplate = false
+                button.image = colored
             }
         } else {
-            // Simple waveform icon when not recording
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             if let image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "WhisperWrap") {
-                let configuredImage = image.withSymbolConfiguration(config)
-                configuredImage?.isTemplate = true
-                button.image = configuredImage
+                let configured = image.withSymbolConfiguration(config)
+                configured?.isTemplate = true
+                button.image = configured
             }
         }
     }
