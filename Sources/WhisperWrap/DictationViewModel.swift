@@ -514,6 +514,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             audioRecorder?.delegate = self
             audioRecorder?.isMeteringEnabled = true
             
+            LoggerService.shared.debug("Recording started — model: \(selectedModel.rawValue), device: \(selectedAudioDeviceID ?? "default")")
             if audioRecorder?.record() == true {
                 isRecording = true
                 isProcessing = false
@@ -567,6 +568,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             saveRecording(from: url, to: saveDir)
         }
 
+        LoggerService.shared.debug("Recording stopped — starting transcription")
         transcribe(url: url)
     }
 
@@ -653,7 +655,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     if didTrim { try? FileManager.default.removeItem(at: processedURL) }
                 }
 
+                LoggerService.shared.debug("Transcribing with model: \(selectedModel.rawValue)\(didTrim ? " (VAD trimmed silence)" : "")")
                 var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel)
+                LoggerService.shared.debug("Transcription complete — \(text.split(separator: " ").count) words")
 
                 // Check if cancelled before continuing
                 if Task.isCancelled { return }
@@ -727,6 +731,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 return
             } catch {
                 let msg = error.localizedDescription
+                LoggerService.shared.debug("Transcription error: \(msg)")
                 self.transcribedText = "Error: \(msg)"
                 if self.showHUD {
                     HUDWindowController.shared.updateStreamingText("Error: \(msg)")

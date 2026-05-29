@@ -30,7 +30,7 @@ struct DiagnosticsView: View {
                         let logs = LoggerService.shared.export()
                         let pasteboard = NSPasteboard.general
                         pasteboard.clearContents()
-                        pasteboard.setString(logs, forType: .string)
+                        pasteboard.setString(logs.isEmpty ? "(no logs captured)" : logs, forType: .string)
                     }
 
                     Button("Save to Downloads") {
@@ -40,6 +40,28 @@ struct DiagnosticsView: View {
                     Button("Clear") {
                         LoggerService.shared.clear()
                     }
+
+                    Spacer()
+                    Text("\(viewModel.logCount) entries")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                if viewModel.logCount == 0 {
+                    Text("No logs captured yet. Start a recording to generate logs.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .italic()
+                } else {
+                    ScrollView {
+                        Text(viewModel.recentLogs)
+                            .font(.system(.caption2, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(height: 120)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(4)
                 }
             }
 
@@ -55,19 +77,17 @@ struct DiagnosticsView: View {
 
     private func saveLogs() {
         let logs = LoggerService.shared.export()
+        let content = logs.isEmpty ? "(no logs captured)" : logs
         let filename = "WhisperWrap_Logs_\(Int(Date().timeIntervalSince1970)).txt"
         let tempUrl = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
 
         do {
-            try logs.write(to: tempUrl, atomically: true, encoding: .utf8)
+            try content.write(to: tempUrl, atomically: true, encoding: .utf8)
 
-            // Move to Downloads
             if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
                 let destUrl = downloads.appendingPathComponent(filename)
-                try? FileManager.default.removeItem(at: destUrl) // overwrite if exists
+                try? FileManager.default.removeItem(at: destUrl)
                 try FileManager.default.moveItem(at: tempUrl, to: destUrl)
-
-                // Show in Finder
                 NSWorkspace.shared.activateFileViewerSelecting([destUrl])
             }
         } catch {

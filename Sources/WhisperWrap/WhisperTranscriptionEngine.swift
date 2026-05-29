@@ -35,6 +35,7 @@ class WhisperTranscriptionEngine: ObservableObject {
                 self.isReady = false
                 self.downloadProgress = 0
                 logger.info("Downloading model: \(modelName)")
+                LoggerService.shared.debug("Downloading WhisperKit model: \(modelName)")
 
                 let modelFolder = try await WhisperKit.download(variant: modelName) { @Sendable progress in
                     Task { @MainActor [weak self] in
@@ -48,8 +49,10 @@ class WhisperTranscriptionEngine: ObservableObject {
                 self.isReady = true
                 self.downloadProgress = 1.0
                 logger.info("Model ready: \(modelName)")
+                LoggerService.shared.debug("Model ready: \(modelName)")
             } catch {
                 logger.error("Model load failed: \(error)")
+                LoggerService.shared.debug("Model load failed: \(error.localizedDescription)")
                 self.loadError = error
             }
         }

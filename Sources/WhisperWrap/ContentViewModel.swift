@@ -38,6 +38,13 @@ class ContentViewModel: ObservableObject {
     // Always ready — no Python setup needed
     var needsSetup: Bool { false }
 
+    var logCount: Int { LoggerService.shared.logs.count }
+    var recentLogs: String {
+        let all = LoggerService.shared.logs
+        let recent = all.suffix(50)
+        return recent.joined(separator: "\n")
+    }
+
     init() {
         self.fileClaudeEnabled = UserDefaults.standard.bool(forKey: "fileClaudeEnabled")
         if let savedID = UserDefaults.standard.string(forKey: "fileClaudePromptID"),
