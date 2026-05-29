@@ -626,6 +626,25 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             }
 
             do {
+                // Show download/load progress in HUD if model not yet ready
+                let engine = contentViewModel.transcriptionEngine
+                var hudProgressTask: Task<Void, Never>? = nil
+                if !engine.isReady && self.showHUD {
+                    hudProgressTask = Task { @MainActor in
+                        while !Task.isCancelled && !engine.isReady {
+                            let progress = engine.downloadProgress
+                            if progress > 0 && progress < 1.0 {
+                                HUDWindowController.shared.updateStreamingText("Downloading model... \(Int(progress * 100))%")
+                            } else {
+                                HUDWindowController.shared.updateStreamingText("Loading model...")
+                            }
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                        }
+                        HUDWindowController.shared.clearStreamingText(animated: false)
+                    }
+                }
+                defer { hudProgressTask?.cancel() }
+
                 // VAD: trim silence before transcription
                 let vadProcessor = FluidVADProcessor()
                 let processedURL = await vadProcessor.trimSilence(audioURL: url) ?? url
@@ -705,10 +724,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 }
 
             } catch is CancellationError {
-                // Silently handle cancellation
                 return
             } catch {
-                self.transcribedText = "Error: \(error.localizedDescription)"
+                let msg = error.localizedDescription
+                self.transcribedText = "Error: \(msg)"
+                if self.showHUD {
+                    HUDWindowController.shared.updateStreamingText("Error: \(msg)")
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                }
             }
         }
     }
