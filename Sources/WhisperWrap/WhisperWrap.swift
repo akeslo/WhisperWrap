@@ -55,22 +55,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentViewModel.claudeService = claudeService
         contentViewModel.claudePromptManager = claudePromptManager
 
-        // Notification setup
-        let notifCenter = UNUserNotificationCenter.current()
-        notifCenter.delegate = WWNotificationDelegate.shared
-        let stopAction = UNNotificationAction(
-            identifier: "WW_STOP_RECORDING",
-            title: "Stop Recording",
-            options: [.foreground]
-        )
-        let silentCategory = UNNotificationCategory(
-            identifier: "WW_SILENT_MIC",
-            actions: [stopAction],
-            intentIdentifiers: [],
-            options: []
-        )
-        notifCenter.setNotificationCategories([silentCategory])
-        notifCenter.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        // Notification setup — UNUserNotificationCenter requires a proper .app bundle;
+        // skip when running via `swift run` (no bundle ID).
+        if Bundle.main.bundleIdentifier != nil {
+            let notifCenter = UNUserNotificationCenter.current()
+            notifCenter.delegate = WWNotificationDelegate.shared
+            let stopAction = UNNotificationAction(
+                identifier: "WW_STOP_RECORDING",
+                title: "Stop Recording",
+                options: [.foreground]
+            )
+            let silentCategory = UNNotificationCategory(
+                identifier: "WW_SILENT_MIC",
+                actions: [stopAction],
+                intentIdentifiers: [],
+                options: []
+            )
+            notifCenter.setNotificationCategories([silentCategory])
+            notifCenter.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        }
 
         // Setup Menu Bar immediately on launch
         MenuBarManager.shared.setup(dictationViewModel: dictationViewModel, contentViewModel: contentViewModel)

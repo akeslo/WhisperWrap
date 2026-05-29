@@ -785,12 +785,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                         }
                     case .recovered:
                         self.silentNotificationPosted = false
-                        UNUserNotificationCenter.current().removePendingNotificationRequests(
-                            withIdentifiers: ["whisperwrap.silent-mic"]
-                        )
-                        UNUserNotificationCenter.current().removeDeliveredNotifications(
-                            withIdentifiers: ["whisperwrap.silent-mic"]
-                        )
+                        if Bundle.main.bundleIdentifier != nil {
+                            UNUserNotificationCenter.current().removePendingNotificationRequests(
+                                withIdentifiers: ["whisperwrap.silent-mic"]
+                            )
+                            UNUserNotificationCenter.current().removeDeliveredNotifications(
+                                withIdentifiers: ["whisperwrap.silent-mic"]
+                            )
+                        }
                     }
                 }
             }
@@ -804,6 +806,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     private func postSilentMicNotification() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = "No audio detected"
         content.body = "Your microphone has been silent for 90 seconds. Check your mic or stop recording."
@@ -813,7 +816,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         let request = UNNotificationRequest(
             identifier: "whisperwrap.silent-mic",
             content: content,
-            trigger: nil  // deliver immediately
+            trigger: nil
         )
         UNUserNotificationCenter.current().add(request) { error in
             if let error { print("Silent mic notification error: \(error)") }
