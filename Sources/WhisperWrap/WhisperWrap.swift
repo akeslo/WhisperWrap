@@ -349,7 +349,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        Task { await PermissionsManager.shared.runHealthCheck() }
+        Task {
+            await PermissionsManager.shared.runHealthCheck()
+            dictationViewModel.loadAudioDevices()
+        }
     }
 }
 

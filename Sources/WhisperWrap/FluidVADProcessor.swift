@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import FluidAudio
 import Foundation
 
@@ -125,7 +125,7 @@ final class FluidVADProcessor: @unchecked Sendable {
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
         buffer.frameLength = frameCount
         samples.withUnsafeBufferPointer { ptr in
-            buffer.floatChannelData![0].assign(from: ptr.baseAddress!, count: samples.count)
+            buffer.floatChannelData![0].update(from: ptr.baseAddress!, count: samples.count)
         }
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
         try file.write(from: buffer)

@@ -266,12 +266,13 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 continue // Skip devices without input
             }
 
-            // Actually read the buffer list to verify input channels exist
-            // Allocate memory for the buffer list
-            let bufferListPtr = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
-            defer {
-                bufferListPtr.deallocate()
-            }
+            // Allocate exact bytes CoreAudio will write — AudioBufferList is variable-length
+            let bufferListData = UnsafeMutableRawPointer.allocate(
+                byteCount: Int(inputBufferListSize),
+                alignment: MemoryLayout<AudioBufferList>.alignment
+            )
+            defer { bufferListData.deallocate() }
+            let bufferListPtr = bufferListData.assumingMemoryBound(to: AudioBufferList.self)
 
             var bufferListSize = inputBufferListSize
             let getBufferListStatus = AudioObjectGetPropertyData(
@@ -287,16 +288,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 continue
             }
 
-            // Check if there are actual input channels
-            let bufferList = bufferListPtr.pointee
-            var hasInputChannels = false
-
-            // Check the first buffer (most devices have just one)
-            if bufferList.mNumberBuffers > 0 && bufferList.mBuffers.mNumberChannels > 0 {
-                hasInputChannels = true
-            }
-
-            guard hasInputChannels else {
+            // Check all buffers for input channels (not just the first)
+            let abl = UnsafeMutableAudioBufferListPointer(bufferListPtr)
+            guard abl.contains(where: { $0.mNumberChannels > 0 }) else {
                 continue // Skip devices without actual input channels
             }
 
@@ -323,6 +317,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
             if nameStatus == noErr, let name = nameRef {
                 let deviceName = name as String
+                // Skip internal CoreAudio virtual aggregate devices
+                guard !deviceName.hasPrefix("CADefaultDeviceAggregate") else { continue }
                 devices.append((id: String(deviceID), name: deviceName))
             }
         }
