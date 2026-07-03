@@ -161,7 +161,7 @@ struct HUDView: View {
                         .scrollIndicators(.visible)
                     }
 
-                    // Progress bar
+                    // Countdown progress bar
                     GeometryReader { geo in
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.purple.opacity(0.4))
@@ -237,8 +237,7 @@ struct HUDView: View {
     }
 
     private func copyToClipboard() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(state.streamingText, forType: .string)
+        HUDWindowController.shared.copyToClipboardWithRestore(state.streamingText)
         showCopied = true
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)

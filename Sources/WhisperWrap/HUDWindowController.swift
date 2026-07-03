@@ -17,7 +17,14 @@ class HUDWindowController: NSWindowController {
 
     private var promptSelectionContinuation: CheckedContinuation<PromptSelectionResult, Never>?
     private var countdownTimer: Timer?
-    
+
+    /// True while the prompt-selection HUD is up and waiting for a choice.
+    var isSelectingPrompt: Bool {
+        promptSelectionContinuation != nil
+    }
+
+    private var clipboardRestoreWorkItem: DispatchWorkItem?
+
     init() {
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 450, height: 80),
@@ -166,16 +173,7 @@ class HUDWindowController: NSWindowController {
             var frame = currentFrame
             frame.size.height = newHeight
             frame.size.width = newWidth
-            // Ensure window stays on screen
-            if let screen = panel.screen ?? NSScreen.main {
-                let screenRect = screen.visibleFrame
-                if frame.origin.y < screenRect.minY {
-                    frame.origin.y = screenRect.minY + 10
-                }
-                if frame.origin.y + frame.size.height > screenRect.maxY {
-                    frame.origin.y = screenRect.maxY - frame.size.height - 10
-                }
-            }
+            clampToScreen(&frame, for: panel)
             panel.setFrame(frame, display: true, animate: true)
         }
     }
@@ -254,6 +252,7 @@ class HUDWindowController: NSWindowController {
             frame.size.width = newWidth
             frame.origin.y -= heightDiff
             frame.origin.x -= widthDiff / 2 // Keep centered
+            clampToScreen(&frame, for: panel)
             panel.setFrame(frame, display: true, animate: true)
         }
 
@@ -300,7 +299,7 @@ class HUDWindowController: NSWindowController {
     }
 
     private func startCountdown() {
-        let totalDuration: Double = 5.0
+        let totalDuration: Double = 3.0
         let interval: Double = 0.05
         let decrement = interval / totalDuration
 
@@ -331,6 +330,20 @@ class HUDWindowController: NSWindowController {
         countdownTimer = nil
     }
 
+    /// Keeps a candidate frame's vertical extent within the primary screen.
+    /// Always uses the same screen (`show()` positions against the primary screen too) so
+    /// resize calls don't fight each other across monitors and cause the panel to drift.
+    private func clampToScreen(_ frame: inout NSRect, for panel: NSWindow) {
+        guard let screen = NSScreen.screens.first ?? panel.screen ?? NSScreen.main else { return }
+        let screenRect = screen.visibleFrame
+        if frame.origin.y < screenRect.minY {
+            frame.origin.y = screenRect.minY + 10
+        }
+        if frame.origin.y + frame.size.height > screenRect.maxY {
+            frame.origin.y = screenRect.maxY - frame.size.height - 10
+        }
+    }
+
     private func resetPromptSelectionSize() {
         if let panel = window {
             var frame = panel.frame
@@ -342,8 +355,43 @@ class HUDWindowController: NSWindowController {
             frame.size.width = newWidth
             frame.origin.y -= heightDiff
             frame.origin.x -= widthDiff / 2 // Keep centered
+            clampToScreen(&frame, for: panel)
             panel.setFrame(frame, display: true, animate: true)
         }
+    }
+
+    // MARK: - Clipboard
+
+    /// Copies `text` to the clipboard, snapshotting whatever was there before so it can be
+    /// restored 30s later — unless the clipboard was changed by something else in the meantime.
+    func copyToClipboardWithRestore(_ text: String) {
+        let pasteboard = NSPasteboard.general
+
+        let previousItems: [NSPasteboardItem] = (pasteboard.pasteboardItems ?? []).map { item in
+            let clone = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    clone.setData(data, forType: type)
+                }
+            }
+            return clone
+        }
+
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        let changeCountAfterCopy = pasteboard.changeCount
+
+        clipboardRestoreWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            let pasteboard = NSPasteboard.general
+            guard pasteboard.changeCount == changeCountAfterCopy else { return }
+            pasteboard.clearContents()
+            if !previousItems.isEmpty {
+                pasteboard.writeObjects(previousItems)
+            }
+        }
+        clipboardRestoreWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
     }
 
     private func handleClose() {

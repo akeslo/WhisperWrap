@@ -76,11 +76,10 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             UserDefaults.standard.set(selectedClaudeModel, forKey: "dictationClaudeModel")
         }
     }
-    @Published var promptSelectionMode: Bool = false {
-        didSet {
-            UserDefaults.standard.set(promptSelectionMode, forKey: "dictationPromptSelectionMode")
-        }
-    }
+    /// The raw, pre-Claude transcription from the most recent dictation.
+    @Published var lastRawTranscription: String = ""
+    /// The Claude-processed output from the most recent dictation, empty if none was generated.
+    @Published var lastProcessedOutput: String = ""
 
     enum ActiveAlert: Identifiable {
         case accessibility
@@ -148,8 +147,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         if let savedModel = UserDefaults.standard.string(forKey: "dictationClaudeModel") {
             self.selectedClaudeModel = savedModel
         }
-        self.promptSelectionMode = UserDefaults.standard.bool(forKey: "dictationPromptSelectionMode")
-
         super.init()
 
         // Load saved device first, before loading available devices
@@ -164,13 +161,32 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     private func setupHotKey() {
-        hotKeyManager.eventHandler = { [weak self] in
+        // Main dictation toggle: Option+Space (user-configurable)
+        hotKeyManager.register(keyCode: kVK_Space, modifiers: optionKey) { [weak self] in
             Task { @MainActor in
-                self?.toggleRecording()
+                guard let self = self else { return }
+                if HUDWindowController.shared.isSelectingPrompt {
+                    HUDWindowController.shared.skipPromptSelection()
+                } else if self.isProcessing {
+                    self.cancelTranscription()
+                } else {
+                    self.toggleRecording()
+                }
             }
         }
-        // Register default hotkey: Option+Space
-        hotKeyManager.register(keyCode: kVK_Space, modifiers: optionKey)
+        // Show last transcription + AI output: Option+Shift+V
+        hotKeyManager.registerAdditional(id: 2, keyCode: kVK_ANSI_V, modifiers: optionKey | shiftKey) { [weak self] in
+            Task { @MainActor in
+                self?.openLastResultWindow()
+            }
+        }
+    }
+
+    func openLastResultWindow() {
+        LastResultWindowController.shared.show(
+            rawTranscription: lastRawTranscription,
+            processedOutput: lastProcessedOutput
+        )
     }
 
     // MARK: - Recording Directory Management
@@ -409,7 +425,18 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     func setHotkey(keyCode: Int, modifiers: Int) {
-        hotKeyManager.register(keyCode: keyCode, modifiers: modifiers)
+        hotKeyManager.register(keyCode: keyCode, modifiers: modifiers) { [weak self] in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if HUDWindowController.shared.isSelectingPrompt {
+                    HUDWindowController.shared.skipPromptSelection()
+                } else if self.isProcessing {
+                    self.cancelTranscription()
+                } else {
+                    self.toggleRecording()
+                }
+            }
+        }
         objectWillChange.send() // Trigger UI update
     }
     
@@ -658,6 +685,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 // Check if cancelled before continuing
                 if Task.isCancelled { return }
 
+                let originalTranscription = text
+
                 // Claude processing (if enabled and there's text to process)
                 if claudeEnabled,
                    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -666,9 +695,10 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
                     // Determine which prompt to use
                     var selectedPromptText: String?
+                    let defaultID = selectedClaudePromptID ?? ClaudePrompt.builtinPolish.id
 
-                    if promptSelectionMode && showHUD {
-                        let defaultID = selectedClaudePromptID ?? ClaudePrompt.builtinPolish.id
+                    if showHUD {
+                        // Brief overlay after every transcription — pick a prompt or let the default apply.
                         let result = await HUDWindowController.shared.showPromptSelection(
                             prompts: claudePromptManager.allPrompts,
                             defaultID: defaultID
@@ -682,8 +712,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                         case .skipped, .cancelled:
                             selectedPromptText = nil
                         }
-                    } else if let promptID = selectedClaudePromptID,
-                              let prompt = claudePromptManager.allPrompts.first(where: { $0.id == promptID }) {
+                    } else if let prompt = claudePromptManager.allPrompts.first(where: { $0.id == defaultID }) {
                         selectedPromptText = prompt.prompt
                     }
 
@@ -713,6 +742,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 }
 
                 self.transcribedText = text
+                self.lastRawTranscription = originalTranscription
+                self.lastProcessedOutput = (text != originalTranscription) ? text : ""
 
                 if autoCopy || autoPaste {
                     NSPasteboard.general.clearContents()
