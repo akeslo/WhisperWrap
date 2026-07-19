@@ -20,7 +20,7 @@ struct TranscriptionView: View {
     @State private var showClaudeSetupAlert: Bool = false
 
     let formats = ["txt", "srt", "json"]
-    let onDrop: (URL, Model, String) -> Void
+    let onDrop: (URL, Model, String, Bool) -> Void
     var onCancel: (() -> Void)?
 
     var body: some View {
@@ -190,7 +190,24 @@ struct TranscriptionView: View {
                         let url = URL(dataRepresentation: urlData, relativeTo: nil)
                         guard let url = url else { return }
                         droppedFileName = url.lastPathComponent
-                        onDrop(url, selectedModel, selectedFormat)
+                        
+                        if fileClaudeEnabled {
+                            let alert = NSAlert()
+                            alert.messageText = "Process with Claude?"
+                            alert.informativeText = "Do you want to send the transcribed contents of this file to Claude for processing? This may share sensitive data with Anthropic."
+                            alert.addButton(withTitle: "Yes, Send to Claude")
+                            alert.addButton(withTitle: "No, Transcribe Only")
+                            alert.addButton(withTitle: "Cancel")
+                            
+                            let response = alert.runModal()
+                            if response == .alertFirstButtonReturn {
+                                onDrop(url, selectedModel, selectedFormat, true)
+                            } else if response == .alertSecondButtonReturn {
+                                onDrop(url, selectedModel, selectedFormat, false)
+                            }
+                        } else {
+                            onDrop(url, selectedModel, selectedFormat, false)
+                        }
                     }
                 }
                 return true

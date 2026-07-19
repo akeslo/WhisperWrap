@@ -52,8 +52,6 @@ struct DictationSettingsView: View {
 
                 HStack {
                     Toggle("Auto Copy", isOn: $viewModel.autoCopy)
-                    Toggle("Auto Paste", isOn: $viewModel.autoPaste)
-                        .help("Requires Accessibility Permissions")
                     Toggle("Show HUD", isOn: $viewModel.showHUD)
                     Toggle("Save Recordings", isOn: Binding(
                         get: { viewModel.saveRecordings },
@@ -139,6 +137,14 @@ struct DictationSettingsView: View {
                     Text("A 3-second prompt picker appears after each transcription — pick one or it uses your default. ⌥⇧V shows the last transcription and AI output.")
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    HStack {
+                        Text("CLI Path")
+                            .frame(width: 100, alignment: .leading)
+                        TextField("e.g. /usr/local/bin/claude (optional)", text: $claudeService.customClaudePath)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        Spacer()
+                    }
 
                     HStack {
                         Text("Model")

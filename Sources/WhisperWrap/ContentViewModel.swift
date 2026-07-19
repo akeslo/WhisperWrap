@@ -56,8 +56,8 @@ class ContentViewModel: ObservableObject {
         cleanupOldTempFiles()
     }
 
-    func transcribe(url: URL, model: Model, format: String) {
-        processAudio(fileURL: url, model: model, format: format)
+    func transcribe(url: URL, model: Model, format: String, useClaude: Bool) {
+        processAudio(fileURL: url, model: model, format: format, useClaude: useClaude)
     }
 
     func transcribeDictation(audioURL: URL, model: Model) async throws -> String {
@@ -79,7 +79,7 @@ class ContentViewModel: ObservableObject {
         consoleOutput += "\n❌ Transcription cancelled\n"
     }
 
-    private func processAudio(fileURL: URL, model: Model, format: String) {
+    private func processAudio(fileURL: URL, model: Model, format: String, useClaude: Bool) {
         processingTask = Task {
             isProcessing = true
             consoleOutput = ""
@@ -126,8 +126,8 @@ class ContentViewModel: ObservableObject {
                 let tempOutputURL = tempDir.appendingPathComponent("\(baseName).\(format)")
                 try transcribedText.write(to: tempOutputURL, atomically: true, encoding: .utf8)
 
-                // Claude processing (if enabled)
-                if fileClaudeEnabled,
+                // Claude processing (if enabled explicitly for this file)
+                if useClaude,
                    let claudeService = claudeService,
                    let claudePromptManager = claudePromptManager,
                    let promptID = fileClaudePromptID,

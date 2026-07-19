@@ -31,11 +31,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
         }
     }
-    @Published var autoPaste: Bool = false {
-        didSet {
-            UserDefaults.standard.set(autoPaste, forKey: "autoPaste")
-        }
-    }
     @Published var showHUD: Bool {
         didSet {
             UserDefaults.standard.set(showHUD, forKey: "showHUD")
@@ -123,7 +118,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     override init() {
         self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
         self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
-        self.autoPaste = UserDefaults.standard.object(forKey: "autoPaste") as? Bool ?? false
         self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
 
         if let savedModelRaw = UserDefaults.standard.string(forKey: "selectedModel"),
@@ -745,13 +739,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 self.lastRawTranscription = originalTranscription
                 self.lastProcessedOutput = (text != originalTranscription) ? text : ""
 
-                if autoCopy || autoPaste {
+                if autoCopy {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
-                }
-
-                if autoPaste {
-                    injectText()
                 }
 
             } catch is CancellationError {
@@ -768,52 +758,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
     
-    private func injectText() {
-        // Check if the main UI window is actually open
-        let isMainInterfaceVisible = NSApp.windows.contains {
-            $0.isVisible && !$0.isKind(of: NSPanel.self)
-        }
-
-        // If the UI is open and focused (active), do NOT auto-paste or minimize.
-        // Just let the transcription appear in the app UI.
-        if NSApp.isActive && isMainInterfaceVisible {
-            return
-        }
-
-        // Check if accessibility permissions are granted before attempting paste
-        if !AXIsProcessTrusted() {
-            print("⚠️ Accessibility permissions not granted - cannot auto-paste")
-            print("📋 Text has been copied to clipboard")
-
-            // Ensure we're on main thread and app is active to show alert
-            DispatchQueue.main.async { [weak self] in
-                NSApp.activate(ignoringOtherApps: true)
-                self?.activeAlert = .accessibility
-            }
-            return
-        }
-
-        // If UI is not active (e.g. background/minimized) OR only the HUD was visible,
-        // we want to paste into the previously focused app.
-        // Original behavior: Hide app to ensure focus switch, then paste.
-        NSApp.hide(nil)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            let source = CGEventSource(stateID: .hidSystemState)
-
-            let vKeyCode = CGKeyCode(kVK_ANSI_V)
-
-            // Cmd + V down
-            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true)
-            keyDown?.flags = .maskCommand
-            keyDown?.post(tap: .cghidEventTap)
-
-            // Cmd + V up
-            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
-            keyUp?.flags = .maskCommand
-            keyUp?.post(tap: .cghidEventTap)
-        }
-    }
     
     // MARK: - Audio Metering
     

@@ -15,15 +15,21 @@ final class ShellService: @unchecked Sendable {
         return env
     }()
 
-    nonisolated func runCommand(_ command: String) async throws -> String {
+    nonisolated func runCommand(executable: String, arguments: [String] = [], stdinData: Data? = nil) async throws -> String {
         let process = Process()
         let pipe = Pipe()
+        let inPipe = Pipe()
 
-        process.standardInput = nil
+        if stdinData != nil {
+            process.standardInput = inPipe
+        } else {
+            process.standardInput = nil
+        }
+        
         process.standardOutput = pipe
         process.standardError = pipe
-        process.arguments = ["-c", command]
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = [executable] + arguments
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.environment = ShellService.enrichedEnvironment
         
         return try await withCheckedThrowingContinuation { continuation in
@@ -40,22 +46,34 @@ final class ShellService: @unchecked Sendable {
             
             do {
                 try process.run()
+                if let data = stdinData {
+                    Task.detached {
+                        inPipe.fileHandleForWriting.write(data)
+                        try? inPipe.fileHandleForWriting.close()
+                    }
+                }
             } catch {
                 continuation.resume(throwing: error)
             }
         }
     }
     
-    nonisolated func streamCommand(_ command: String) -> AsyncStream<String> {
+    nonisolated func streamCommand(executable: String, arguments: [String] = [], stdinData: Data? = nil) -> AsyncStream<String> {
         AsyncStream { continuation in
             let process = Process()
             let pipe = Pipe()
+            let inPipe = Pipe()
 
-            process.standardInput = nil
+            if stdinData != nil {
+                process.standardInput = inPipe
+            } else {
+                process.standardInput = nil
+            }
+            
             process.standardOutput = pipe
             process.standardError = pipe
-            process.arguments = ["-c", command]
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = [executable] + arguments
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.environment = ShellService.enrichedEnvironment
 
             pipe.fileHandleForReading.readabilityHandler = { fileHandle in
@@ -88,6 +106,12 @@ final class ShellService: @unchecked Sendable {
 
             do {
                 try process.run()
+                if let data = stdinData {
+                    Task.detached {
+                        inPipe.fileHandleForWriting.write(data)
+                        try? inPipe.fileHandleForWriting.close()
+                    }
+                }
             } catch {
                 continuation.finish()
             }

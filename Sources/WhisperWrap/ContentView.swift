@@ -33,8 +33,8 @@ struct ContentView: View {
                 claudePromptManager: claudePromptManager,
                 fileClaudeEnabled: $viewModel.fileClaudeEnabled,
                 fileClaudePromptID: $viewModel.fileClaudePromptID,
-                onDrop: { url, model, format in
-                    viewModel.transcribe(url: url, model: model, format: format)
+                onDrop: { url, model, format, useClaude in
+                    viewModel.transcribe(url: url, model: model, format: format, useClaude: useClaude)
                 },
                 onCancel: {
                     viewModel.cancelTranscription()

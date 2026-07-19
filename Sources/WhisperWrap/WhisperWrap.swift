@@ -99,57 +99,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         
-        // Default to accessory mode (hidden from dock) until we decide otherwise
-        NSApp.setActivationPolicy(.accessory)
-        
-        // Aggressively close any windows that appear before we're ready
-        // Run this check multiple times in the first second to catch SwiftUI window creation
-        for delay in [0.0, 0.1, 0.2, 0.5, 1.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self = self else { return }
-                if !self.shouldShowMainWindow {
-                    for window in NSApp.windows {
-                        if window.isVisible && !window.isKind(of: NSPanel.self) {
-                            self.logToFile("Force closing window at delay \(delay): \(window.title)")
-                            window.orderOut(nil)
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Check for Manual Launch (Finder/Dock Double Click)
-        // If launched by Finder (Apple Event 'oapp'), we want to show the window.
-        // Login items usually launch without a standard 'oapp' event or with specific parameters we can filtering.
-        let event = NSAppleEventManager.shared().currentAppleEvent
-        if let event = event,
-           event.eventClass == kCoreEventClass,
-           event.eventID == kAEOpenApplication {
-            
-            // Check for simulation flag
-            if ProcessInfo.processInfo.arguments.contains("-backgroundLaunch") {
-                self.logToFile("Startup: Simulation flag detected, ignoring Apple Event")
-                print("Startup: Simulation flag detected, ignoring Apple Event")
-            } else {
-                self.logToFile("Startup: Detected Manual Launch (Apple Event), showing window")
-                print("Startup: Detected Manual Launch (Apple Event), showing window")
-                shouldShowMainWindow = true
-                showMainWindow()
-            }
-        }
-        
         // WhisperKit needs no setup — stay hidden at launch unless manually opened
         logToFile("Startup: WhisperKit ready, staying hidden")
-        print("Startup: WhisperKit ready, staying hidden")
 
         // Force close check on launch
-        if !shouldShowMainWindow {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                if !self.shouldShowMainWindow {
-                    NSApp.windows.forEach { window in
-                        if window.identifier?.rawValue == "main" {
-                            window.close()
-                        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if !self.shouldShowMainWindow {
+                NSApp.windows.forEach { window in
+                    if window.identifier?.rawValue == "main" {
+                        window.close()
                     }
                 }
             }
@@ -165,16 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func logToFile(_ text: String) {
-        let url = URL(fileURLWithPath: "/tmp/ww_internal.log")
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            if let data = (text + "\n").data(using: .utf8) {
-                handle.write(data)
-            }
-            try? handle.close()
-        } else {
-            try? (text + "\n").write(to: url, atomically: true, encoding: .utf8)
-        }
+        LoggerService.shared.debug(text)
     }
 
     // MARK: - App Location Check
