@@ -20,7 +20,14 @@ class ClaudeService: ObservableObject {
     private let shell = ShellService()
 
     var effectiveClaudeExecutable: String {
-        let custom = customClaudePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.effectiveExecutable(customPath: customClaudePath)
+    }
+
+    /// Resolves the executable to invoke: a trimmed custom path override if set, otherwise
+    /// the bare `claude` command resolved via PATH. Extracted as a pure static function so
+    /// it is testable without instantiating the @MainActor service.
+    nonisolated static func effectiveExecutable(customPath: String) -> String {
+        let custom = customPath.trimmingCharacters(in: .whitespacesAndNewlines)
         return custom.isEmpty ? "claude" : custom
     }
 
@@ -94,7 +101,7 @@ class ClaudeService: ObservableObject {
     }
 
     /// Check if output looks like a Claude CLI error rather than valid content
-    static func looksLikeError(_ output: String) -> Bool {
+    nonisolated static func looksLikeError(_ output: String) -> Bool {
         let lower = output.lowercased()
         return lower.contains("error:") || lower.contains("traceback") || lower.contains("fatal:")
             || lower.contains("not authenticated") || lower.contains("api error")

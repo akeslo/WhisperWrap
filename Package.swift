@@ -17,5 +17,10 @@ let package = Package(
             ],
             resources: [.copy("Resources/AppIcon.appiconset")]
         ),
+        .testTarget(
+            name: "WhisperWrapTests",
+            dependencies: ["WhisperWrap"],
+            path: "Tests/WhisperWrapTests"
+        ),
     ]
 )

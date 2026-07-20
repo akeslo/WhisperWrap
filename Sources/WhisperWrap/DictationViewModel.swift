@@ -435,6 +435,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     private func characterFromKeyCode(_ keyCode: Int) -> String? {
+        Self.character(forKeyCode: keyCode)
+    }
+
+    /// Maps a Carbon virtual key code to its display character/name for the hotkey UI.
+    /// Extracted as a pure static function (no `self`, no Carbon side effects) so it is
+    /// testable without instantiating the full view model — mirrors the pure-helper
+    /// extraction pattern used by macHermit's `FallbackService` usage-parsing helpers.
+    nonisolated static func character(forKeyCode keyCode: Int) -> String? {
         let keyMap: [Int: String] = [
             kVK_ANSI_A: "A", kVK_ANSI_B: "B", kVK_ANSI_C: "C", kVK_ANSI_D: "D",
             kVK_ANSI_E: "E", kVK_ANSI_F: "F", kVK_ANSI_G: "G", kVK_ANSI_H: "H",

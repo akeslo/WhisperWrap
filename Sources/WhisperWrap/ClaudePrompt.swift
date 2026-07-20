@@ -60,13 +60,19 @@ class ClaudePromptManager: ObservableObject {
     }
 
     var allPrompts: [ClaudePrompt] {
-        let builtins = ClaudePrompt.builtins.map { builtin in
-            if let override = builtinOverrides[builtin.id.uuidString] {
+        Self.applying(overrides: builtinOverrides, to: ClaudePrompt.builtins) + prompts
+    }
+
+    /// Applies text overrides (keyed by prompt UUID string) onto a list of builtin prompts,
+    /// leaving unmatched builtins untouched. Extracted as a pure static function so the
+    /// override-merge logic is testable without instantiating the @MainActor manager.
+    nonisolated static func applying(overrides: [String: String], to builtins: [ClaudePrompt]) -> [ClaudePrompt] {
+        builtins.map { builtin in
+            if let override = overrides[builtin.id.uuidString] {
                 return ClaudePrompt(id: builtin.id, name: builtin.name, prompt: override, isBuiltin: true)
             }
             return builtin
         }
-        return builtins + prompts
     }
 
     func saveCustomPrompt(name: String, prompt: String) {
