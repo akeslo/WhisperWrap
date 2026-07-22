@@ -24,6 +24,7 @@ class HUDWindowController: NSWindowController {
     }
 
     private var clipboardRestoreWorkItem: DispatchWorkItem?
+    private var screenChangeObserver: NSObjectProtocol?
 
     init() {
         let panel = NSPanel(
@@ -32,26 +33,41 @@ class HUDWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        
+
         panel.level = .floating
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = true // Make draggable
-        
+
         super.init(window: panel)
-        
+
         // Initialize view once with close handler
         let hudView = HUDView(state: hudState) { [weak self] in
             self?.handleClose()
         }
         let hostingView = NSHostingView(rootView: hudView)
         panel.contentView = hostingView
+
+        // Register for screen configuration changes
+        screenChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reClampWindowToScreen()
+        }
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let observer = screenChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
     
     func show(audioLevel: Float = 0) {
@@ -124,7 +140,7 @@ class HUDWindowController: NSWindowController {
     private var prePickerFrame: NSRect?
 
     func showDevicePicker() {
-        guard let panel = window, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        guard let panel = window, let screen = NSScreen.screens.first else { return }
         // Save current position to restore later
         prePickerFrame = panel.frame
 
@@ -141,7 +157,7 @@ class HUDWindowController: NSWindowController {
         let y = screenFrame.midY - newHeight / 2
         let centeredFrame = NSRect(x: x, y: y, width: newWidth, height: newHeight)
 
-        panel.setFrame(centeredFrame, display: true, animate: true)
+        resizeWindowOnPrimaryScreen(to: centeredFrame, centerVerticallyIfNeeded: false)
     }
 
     func hideDevicePicker() {
@@ -173,19 +189,27 @@ class HUDWindowController: NSWindowController {
             var frame = currentFrame
             frame.size.height = newHeight
             frame.size.width = newWidth
-            clampToScreen(&frame, for: panel)
-            panel.setFrame(frame, display: true, animate: true)
+            // Adjust vertical origin when expanding to keep top edge stable
+            let heightDelta = newHeight - currentFrame.size.height
+            if heightDelta > 0 {
+                frame.origin.y -= heightDelta / 2
+            }
+            resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
     }
 
     func clearStreamingText(animated: Bool = true) {
         hudState.streamingText = ""
-        // Reset window size
+        // Reset window size and adjust vertical origin to prevent off-screen drift
         if let panel = window {
             var frame = panel.frame
-            frame.size.height = 80
-            frame.size.width = 450
-            panel.setFrame(frame, display: true, animate: animated)
+            let newHeight: CGFloat = 80
+            let newWidth: CGFloat = 450
+            let heightDelta = newHeight - frame.size.height
+            frame.size.height = newHeight
+            frame.size.width = newWidth
+            frame.origin.y -= heightDelta / 2
+            resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
     }
 
@@ -205,7 +229,7 @@ class HUDWindowController: NSWindowController {
             let delta = targetHeight - frame.size.height
             frame.size.height = targetHeight
             frame.origin.y -= delta
-            panel.setFrame(frame, display: true, animate: true)
+            resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
 
         fadeTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
@@ -252,8 +276,7 @@ class HUDWindowController: NSWindowController {
             frame.size.width = newWidth
             frame.origin.y -= heightDiff
             frame.origin.x -= widthDiff / 2 // Keep centered
-            clampToScreen(&frame, for: panel)
-            panel.setFrame(frame, display: true, animate: true)
+            resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
 
         return await withCheckedContinuation { continuation in
@@ -330,6 +353,32 @@ class HUDWindowController: NSWindowController {
         countdownTimer = nil
     }
 
+    /// Unified helper to resize window on the primary screen with automatic clamping.
+    /// - Parameters:
+    ///   - targetFrame: The desired frame for the window.
+    ///   - centerVerticallyIfNeeded: If true, centers the frame vertically on the primary screen if it doesn't fit.
+    private func resizeWindowOnPrimaryScreen(to targetFrame: NSRect, centerVerticallyIfNeeded: Bool) {
+        guard let panel = window, let screen = NSScreen.screens.first else { return }
+        var frame = targetFrame
+        let screenRect = screen.visibleFrame
+
+        // If requested and frame doesn't fit vertically, center it
+        if centerVerticallyIfNeeded && frame.size.height > screenRect.height {
+            let centerY = screenRect.midY - frame.size.height / 2
+            frame.origin.y = centerY
+        } else {
+            // Clamp to screen bounds with 10px margin
+            if frame.origin.y < screenRect.minY {
+                frame.origin.y = screenRect.minY + 10
+            }
+            if frame.origin.y + frame.size.height > screenRect.maxY {
+                frame.origin.y = screenRect.maxY - frame.size.height - 10
+            }
+        }
+
+        panel.setFrame(frame, display: true, animate: true)
+    }
+
     /// Keeps a candidate frame's vertical extent within the primary screen.
     /// Always uses the same screen (`show()` positions against the primary screen too) so
     /// resize calls don't fight each other across monitors and cause the panel to drift.
@@ -344,6 +393,14 @@ class HUDWindowController: NSWindowController {
         }
     }
 
+    /// Re-clamp the window to the primary screen if monitor configuration changes.
+    private func reClampWindowToScreen() {
+        guard let panel = window else { return }
+        var frame = panel.frame
+        clampToScreen(&frame, for: panel)
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
     private func resetPromptSelectionSize() {
         if let panel = window {
             var frame = panel.frame
@@ -355,8 +412,7 @@ class HUDWindowController: NSWindowController {
             frame.size.width = newWidth
             frame.origin.y -= heightDiff
             frame.origin.x -= widthDiff / 2 // Keep centered
-            clampToScreen(&frame, for: panel)
-            panel.setFrame(frame, display: true, animate: true)
+            resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
     }
 
