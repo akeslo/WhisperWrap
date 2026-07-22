@@ -32,7 +32,7 @@ class ContentViewModel: ObservableObject {
     var claudeService: ClaudeService?
     var claudePromptManager: ClaudePromptManager?
 
-    let transcriptionEngine = WhisperTranscriptionEngine()
+    let transcriptionEngine: WhisperTranscriptionEngine
     private var processingTask: Task<Void, Never>?
 
     // Always ready — no Python setup needed
@@ -45,7 +45,8 @@ class ContentViewModel: ObservableObject {
         return recent.joined(separator: "\n")
     }
 
-    init() {
+    init(transcriptionEngine: WhisperTranscriptionEngine? = nil) {
+        self.transcriptionEngine = transcriptionEngine ?? WhisperTranscriptionEngine()
         self.fileClaudeEnabled = UserDefaults.standard.bool(forKey: "fileClaudeEnabled")
         if let savedID = UserDefaults.standard.string(forKey: "fileClaudePromptID"),
            let uuid = UUID(uuidString: savedID) {

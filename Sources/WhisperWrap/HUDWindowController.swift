@@ -1,5 +1,8 @@
 import SwiftUI
 import AppKit
+#if compiler(>=6.0)
+@preconcurrency import ObjectiveC
+#endif
 
 enum PromptSelectionResult {
     case selected(ClaudePrompt)
