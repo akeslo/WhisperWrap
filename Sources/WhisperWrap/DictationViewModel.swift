@@ -629,7 +629,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
 
-    private func transcribe(url: URL) {
+    func transcribe(url: URL) {
         guard let contentViewModel = contentViewModel else { return }
 
         isProcessing = true
