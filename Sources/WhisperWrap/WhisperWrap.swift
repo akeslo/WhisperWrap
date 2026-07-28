@@ -272,9 +272,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 $0.title != "" &&
                 !$0.title.hasPrefix("Item-") // Filter out internal status bar windows
             }
-            
-            print("Visible windows check: \(visibleWindows.map { $0.title })")
-            
+
+            LoggerService.shared.debug("Visible windows check: \(visibleWindows.map { $0.title })")
+
             if visibleWindows.isEmpty {
                 NSApp.setActivationPolicy(.accessory)
             }

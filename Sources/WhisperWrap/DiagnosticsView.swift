@@ -91,7 +91,7 @@ struct DiagnosticsView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([destUrl])
             }
         } catch {
-            print("Failed to save logs: \(error)")
+            LoggerService.shared.debug("Failed to save logs: \(error)")
         }
     }
 }

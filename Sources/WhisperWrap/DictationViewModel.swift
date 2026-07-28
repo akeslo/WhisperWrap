@@ -231,7 +231,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         )
 
         guard status == noErr else {
-            print("Failed to get audio devices data size")
+            LoggerService.shared.debug("Failed to get audio devices data size")
             self.availableAudioDevices = devices
             return
         }
@@ -249,7 +249,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         )
 
         guard getDevicesStatus == noErr else {
-            print("Failed to get audio devices")
+            LoggerService.shared.debug("Failed to get audio devices")
             self.availableAudioDevices = devices
             return
         }
@@ -366,7 +366,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 audioRecorder?.record()
                 startMonitoring()
             } catch {
-                print("Error restarting recording with new device: \(error.localizedDescription)")
+                LoggerService.shared.debug("Error restarting recording with new device: \(error.localizedDescription)")
             }
         } else {
             setDefaultInputDevice(deviceID)
@@ -397,7 +397,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         )
 
         if status != noErr {
-            print("Failed to set default input device: \(status)")
+            LoggerService.shared.debug("Failed to set default input device: \(status)")
         }
     }
     
@@ -492,7 +492,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                print("Failed to toggle launch at login: \(error)")
+                LoggerService.shared.debug("Failed to toggle launch at login: \(error)")
                 // Revert if failed
                 DispatchQueue.main.async {
                     self.launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -507,7 +507,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
         // Check if microphone permission is granted
         if !PermissionsManager.shared.hasMicrophoneAccess {
-            print("Microphone access not granted - cannot record")
+            LoggerService.shared.debug("Microphone access not granted - cannot record")
             activeAlert = .microphoneDenied
             return
         }
@@ -545,7 +545,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 isProcessing = false
                 transcribedText = ""
                 startMonitoring()
-                
+
                 if showHUD {
                     HUDWindowController.shared.setStatus(.listening)
                     HUDWindowController.shared.setAudioDevices(availableAudioDevices, selectedID: selectedAudioDeviceID)
@@ -562,11 +562,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     HUDWindowController.shared.show()
                 }
             } else {
-                print("Failed to start recording")
+                LoggerService.shared.debug("Failed to start recording")
             }
-            
+
         } catch {
-            print("Error setting up recording: \(error.localizedDescription)")
+            LoggerService.shared.debug("Error setting up recording: \(error.localizedDescription)")
         }
     }
     
@@ -606,9 +606,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
         do {
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-            print("Recording saved to: \(destinationURL.path)")
+            LoggerService.shared.debug("Recording saved to: \(destinationURL.path)")
         } catch {
-            print("Failed to save recording: \(error.localizedDescription)")
+            LoggerService.shared.debug("Failed to save recording: \(error.localizedDescription)")
         }
     }
     
@@ -826,7 +826,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request) { error in
-            if let error { print("Silent mic notification error: \(error)") }
+            if let error { LoggerService.shared.debug("Silent mic notification error: \(error)") }
         }
     }
     
