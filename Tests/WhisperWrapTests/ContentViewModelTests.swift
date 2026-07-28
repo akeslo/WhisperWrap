@@ -20,34 +20,31 @@ final class ContentViewModelTests: XCTestCase {
     var mockTranscriptionEngine: ContentMockWhisperTranscriptionEngine!
     var tempDir: URL!
 
-    nonisolated override func setUp() {
-        super.setUp()
-        Task {
-            @MainActor in
-            self.mockTranscriptionEngine = ContentMockWhisperTranscriptionEngine()
-            self.viewModel = ContentViewModel(transcriptionEngine: self.mockTranscriptionEngine)
-            self.mockClaudeService = ContentMockClaudeService()
-            self.mockClaudePromptManager = ContentMockClaudePromptManager()
-            self.viewModel.claudeService = self.mockClaudeService
-            self.viewModel.claudePromptManager = self.mockClaudePromptManager
+    override func setUp() async throws {
+        try await super.setUp()
+        // ContentViewModel.init() reads a saved prompt ID from UserDefaults.standard, which
+        // persists across test runs (and across separate `swift test` invocations) since it's
+        // real UserDefaults, not a test double. Clear it so each test starts from the
+        // documented default (ClaudePrompt.builtinPolish.id) instead of whatever a previous
+        // test happened to leave behind.
+        UserDefaults.standard.removeObject(forKey: "fileClaudePromptID")
+        mockTranscriptionEngine = ContentMockWhisperTranscriptionEngine()
+        viewModel = ContentViewModel(transcriptionEngine: mockTranscriptionEngine)
+        mockClaudeService = ContentMockClaudeService()
+        mockClaudePromptManager = ContentMockClaudePromptManager()
+        viewModel.claudeService = mockClaudeService
+        viewModel.claudePromptManager = mockClaudePromptManager
 
-            self.tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
-                UUID().uuidString,
-                isDirectory: true
-            )
-            try? FileManager.default.createDirectory(at: self.tempDir, withIntermediateDirectories: true)
-        }
-        // Wait for the task to complete
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
-    nonisolated override func tearDown() {
-        Task {
-            @MainActor in
-            try? FileManager.default.removeItem(at: self.tempDir)
-        }
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
-        super.tearDown()
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: tempDir)
+        try await super.tearDown()
     }
 
     // MARK: - Basic transcription without Claude
@@ -449,22 +446,18 @@ final class ContentViewModelTests: XCTestCase {
         format: String,
         useClaude: Bool
     ) async {
-        // Run the async processAudio method synchronously within the test
-        let expectation = XCTestExpectation(description: "Processing complete")
+        viewModel.transcribe(url: fileURL, model: model, format: format, useClaude: useClaude)
 
-        // Use a small delay to allow async operations to complete
-        DispatchQueue.main.async {
-            self.viewModel.transcribe(url: fileURL, model: model, format: format, useClaude: useClaude)
-        }
+        // transcribe() spawns its work in a new Task and returns immediately, so
+        // isProcessing may not have flipped true yet. Yield once to let that Task
+        // start before polling for completion — otherwise a fast poll can race
+        // ahead of the Task and see isProcessing still false, exiting immediately.
+        await Task.yield()
 
-        // Wait for processing to complete (poll with timeout)
         let startTime = Date()
         while viewModel.isProcessing && Date().timeIntervalSince(startTime) < 5.0 {
             try? await Task.sleep(nanoseconds: 10_000_000)  // 10ms poll interval
         }
-
-        expectation.fulfill()
-        await fulfillment(of: [expectation], timeout: 5.0)
     }
 }
 
