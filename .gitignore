@@ -9,3 +9,4 @@ DerivedData/
 .venv/
 WhisperWrap.app/
 build_app.sh
+CLAUDE.local.md
