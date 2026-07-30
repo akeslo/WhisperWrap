@@ -36,9 +36,8 @@ WhisperWrap is a powerful macOS application that provides local, privacy-focused
 ## Building from Source
 
 Requirements:
-- macOS 13.0+
+- macOS 14.0+
 - Swift 5.9+
-- Python 3.10+ (for runtime environment creation)
 
 ```bash
 # Clone the repository
