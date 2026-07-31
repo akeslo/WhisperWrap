@@ -79,7 +79,7 @@ class HotKeyManager: ObservableObject {
                                          &hotKeyRef)
 
         if status != noErr {
-            print("Failed to register hotkey \(id): \(status)")
+            LoggerService.shared.debug("Failed to register hotkey \(id): \(status)")
             return
         }
         registrations[id] = Registration(ref: hotKeyRef, handler: handler)

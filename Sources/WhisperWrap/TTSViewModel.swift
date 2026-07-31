@@ -93,7 +93,7 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                print("ElevenLabs User Info Error: \(httpResponse.statusCode)")
+                LoggerService.shared.debug("ElevenLabs User Info Error: \(httpResponse.statusCode)")
                 
                 if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                     Task { @MainActor in
@@ -108,14 +108,14 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             }
 
             if let response = try? JSONDecoder().decode(ElevenLabsSubscriptionResponse.self, from: data) {
-                print("Decoded User Info: \(response.character_count) / \(response.character_limit)")
+                LoggerService.shared.debug("Decoded User Info: \(response.character_count) / \(response.character_limit)")
                 Task { @MainActor in
                     self.usedCharacterCount = response.character_count
                     self.characterLimit = response.character_limit
                     self.isFetchingCredits = false
                 }
             } else {
-                print("Failed to decode ElevenLabsSubscriptionResponse")
+                LoggerService.shared.debug("Failed to decode ElevenLabsSubscriptionResponse")
                 Task { @MainActor in self.isFetchingCredits = false }
             }
         } catch {
