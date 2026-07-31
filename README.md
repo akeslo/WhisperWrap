@@ -6,9 +6,9 @@ WhisperWrap is a powerful macOS application that provides local, privacy-focused
 
 - **System-Wide Dictation**: Press a global hotkey (default: `Option+Space`) to start dictating anywhere. The transcribed text is automatically copied to your clipboard and can be auto-pasted.
 - **File Transcription**: Drag and drop audio or video files to transcribe them using the native CoreML Whisper model.
-- **Text-to-Speech (TTS)**: Convert text to speech using system voices.
-- **Local Processing**: All speech processing is done locally on your device using native CoreML transcription, ensuring data privacy with no external dependencies.
-- **Optional Claude AI Post-Processing**: Polish transcriptions with grammar correction, summarization, or custom prompts using Claude AI (requires API key).
+- **Text-to-Speech (TTS)**: Convert text to speech using system voices, or optionally the ElevenLabs cloud engine (requires an ElevenLabs API key; text is sent to their servers).
+- **Local Transcription**: Speech-to-text runs entirely on your device using native CoreML transcription — no audio leaves the machine. The optional Claude and ElevenLabs features are the only parts that reach the network, and both are off unless you enable them.
+- **Optional Claude AI Post-Processing**: Polish transcriptions with grammar correction, summarization, or custom prompts. This runs through the [Claude Code CLI](https://claude.com/claude-code) (`claude` on your `PATH`, or a custom path set in settings) using your existing Claude login — no API key is stored in WhisperWrap.
 - **Menu Bar Access**: Quick access to dictation and settings from the menu bar.
 
 ## Installation
@@ -29,7 +29,7 @@ WhisperWrap is a powerful macOS application that provides local, privacy-focused
 6.  The text will be transcribed and pasted automatically (if "Auto Paste" is enabled in settings).
 
 ### Settings
-- **Model Selection**: Choose between different Whisper model sizes (Tiny, Base, Small, Medium, Large) to balance speed vs. accuracy.
+- **Model Selection**: Choose between different Whisper model sizes (Tiny, Base, Small, Medium, Large, Turbo) to balance speed vs. accuracy.
 - **Auto Copy/Paste**: Configure clipboard behavior.
 - **Hotkeys**: Customize the global dictation hotkey.
 
@@ -37,7 +37,7 @@ WhisperWrap is a powerful macOS application that provides local, privacy-focused
 
 Requirements:
 - macOS 14.0+
-- Swift 5.9+
+- Swift 6.2+ toolchain (Xcode 26 or newer) — `Package.swift` declares `swift-tools-version: 6.2`
 
 ```bash
 # Clone the repository

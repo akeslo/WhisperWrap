@@ -79,7 +79,11 @@ class HotKeyManager: ObservableObject {
                                          &hotKeyRef)
 
         if status != noErr {
-            LoggerService.shared.debug("Failed to register hotkey \(id): \(status)")
+            // HotKeyManager is nonisolated, LoggerService.shared is @MainActor — hop rather
+            // than reference it directly (id/status are Sendable value types).
+            Task { @MainActor in
+                LoggerService.shared.debug("Failed to register hotkey \(id): \(status)")
+            }
             return
         }
         registrations[id] = Registration(ref: hotKeyRef, handler: handler)

@@ -14,15 +14,6 @@ enum Model: String, CaseIterable, Identifiable {
         }
     }
 
-    var fasterWhisperName: String {
-        switch self {
-        case .turbo:
-            return "large-v3-turbo"
-        default:
-            return self.rawValue
-        }
-    }
-
     var whisperKitModelName: String {
         switch self {
         case .tiny:   return "openai_whisper-tiny"
