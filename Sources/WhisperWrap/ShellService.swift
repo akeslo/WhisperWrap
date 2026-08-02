@@ -1,5 +1,12 @@
 import Foundation
 
+/// Carries a non-Sendable value across a concurrency boundary. Used only for
+/// `Process`, which is confined to the single detached task that reads it.
+private struct UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
+
 final class ShellService: @unchecked Sendable {
     enum ShellError: Error {
         case commandFailed(String)
@@ -33,27 +40,36 @@ final class ShellService: @unchecked Sendable {
         process.environment = ShellService.enrichedEnvironment
         
         return try await withCheckedThrowingContinuation { continuation in
-            process.terminationHandler = { process in
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
+                return
+            }
+
+            if let data = stdinData {
+                Task.detached {
+                    inPipe.fileHandleForWriting.write(data)
+                    try? inPipe.fileHandleForWriting.close()
+                }
+            }
+
+            // Drain the pipe concurrently with the child process. Reading only
+            // once the process has terminated deadlocks any child that writes
+            // more than the pipe buffer (~64KB): it blocks on write, never
+            // exits, and the await here would hang forever.
+            let box = UncheckedSendableBox(process)
+            Task.detached {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let process = box.value
+                process.waitUntilExit()
                 let output = String(data: data, encoding: .utf8) ?? ""
-                
+
                 if process.terminationStatus == 0 {
                     continuation.resume(returning: output)
                 } else {
                     continuation.resume(throwing: ShellError.commandFailed(output))
                 }
-            }
-            
-            do {
-                try process.run()
-                if let data = stdinData {
-                    Task.detached {
-                        inPipe.fileHandleForWriting.write(data)
-                        try? inPipe.fileHandleForWriting.close()
-                    }
-                }
-            } catch {
-                continuation.resume(throwing: error)
             }
         }
     }

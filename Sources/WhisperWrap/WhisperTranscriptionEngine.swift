@@ -12,6 +12,7 @@ class WhisperTranscriptionEngine: ObservableObject {
     private var pipe: WhisperKit?
     private var loadedModelName: String?
     private var loadingTask: Task<Void, Never>?
+    private var loadingModelName: String?
     private var loadError: Error?
 
     // Load/download model. Deduplicates concurrent calls.
@@ -23,13 +24,24 @@ class WhisperTranscriptionEngine: ObservableObject {
             return
         }
 
-        if let existing = loadingTask {
+        // Only join an in-flight load when it is loading the *same* model.
+        // A different model must wait for that load to finish, then start its
+        // own — otherwise the caller would silently transcribe with the wrong model.
+        while let existing = loadingTask {
+            let inFlightModelName = loadingModelName
             await existing.value
-            if let err = loadError { throw err }
-            return
+            if inFlightModelName == modelName {
+                if let err = loadError { throw err }
+                return
+            }
+            if loadedModelName == modelName, pipe != nil {
+                isReady = true
+                return
+            }
         }
 
         loadError = nil
+        loadingModelName = modelName
         let task = Task { @MainActor in
             do {
                 self.isReady = false
@@ -59,6 +71,7 @@ class WhisperTranscriptionEngine: ObservableObject {
         loadingTask = task
         await task.value
         loadingTask = nil
+        loadingModelName = nil
         if let err = loadError { throw err }
     }
 

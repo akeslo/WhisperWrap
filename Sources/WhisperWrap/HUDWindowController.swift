@@ -75,6 +75,10 @@ class HUDWindowController: NSWindowController {
     
     func show(audioLevel: Float = 0) {
         guard let window = window else { return }
+        // A pending fade from a previous result would otherwise hide this HUD
+        // mid-recording, up to `duration` seconds after the last transcription.
+        cancelPendingFade()
+        window.alphaValue = 1
         hudState.startAnimating()
         // Update audio level
         hudState.audioLevel = audioLevel
@@ -109,6 +113,7 @@ class HUDWindowController: NSWindowController {
     
     func hide() {
         guard let window = window else { return }
+        cancelPendingFade()
         // Save current position before hiding
         hudState.currentPosition = window.frame.origin
         hudState.stopAnimating()
@@ -222,8 +227,7 @@ class HUDWindowController: NSWindowController {
         // Switch to results display state so the text stays visible
         hudState.status = .showingResults
         // Cancel any pending fade timer
-        fadeTimer?.invalidate()
-        fadeTimer = nil
+        cancelPendingFade()
 
         // Expand height to fit copy footer
         var frame = panel.frame
@@ -254,6 +258,11 @@ class HUDWindowController: NSWindowController {
     }
 
     private var fadeTimer: Timer?
+
+    private func cancelPendingFade() {
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+    }
 
     // MARK: - Prompt Selection
 

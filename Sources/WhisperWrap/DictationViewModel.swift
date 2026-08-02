@@ -345,29 +345,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func switchAudioDevice(_ deviceID: String) {
         selectedAudioDeviceID = deviceID
         if isRecording {
-            // Restart recording with new device
-            audioRecorder?.stop()
-            stopMonitoring()
-            setDefaultInputDevice(deviceID)
-
-            do {
-                let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.wav")
-                let settings: [String: Any] = [
-                    AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                    AVSampleRateKey: 16000,
-                    AVNumberOfChannelsKey: 1,
-                    AVLinearPCMBitDepthKey: 16,
-                    AVLinearPCMIsFloatKey: false,
-                    AVLinearPCMIsBigEndianKey: false
-                ]
-                audioRecorder = try AVAudioRecorder(url: url, settings: settings)
-                audioRecorder?.delegate = self
-                audioRecorder?.isMeteringEnabled = true
-                audioRecorder?.record()
-                startMonitoring()
-            } catch {
-                LoggerService.shared.debug("Error restarting recording with new device: \(error.localizedDescription)")
-            }
+            // Applying the switch now would mean restarting AVAudioRecorder over the
+            // same file, truncating it and silently discarding everything said before
+            // the switch. Keep the current take intact and let the new device take
+            // effect on the next recording instead.
+            LoggerService.shared.debug("Audio device switch deferred — applies to the next recording, current take left intact")
         } else {
             setDefaultInputDevice(deviceID)
         }
@@ -586,7 +568,17 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             // Do NOT hide here, wait for transcription
         }
 
-        guard let url = audioRecorder?.url else { return }
+        guard let url = audioRecorder?.url else {
+            // No recorder means there is nothing to transcribe — the HUD was just put
+            // into .transcribing above, so clear it or it stays on screen forever.
+            isProcessing = false
+            if showHUD {
+                HUDWindowController.shared.clearStreamingText(animated: false)
+                HUDWindowController.shared.hide()
+            }
+            LoggerService.shared.debug("Stop requested with no active recorder — nothing to transcribe")
+            return
+        }
 
         // Save recording if enabled
         if saveRecordings, let saveDir = recordingsSaveDirectory {
