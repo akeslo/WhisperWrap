@@ -292,6 +292,12 @@ class HUDWindowController: NSWindowController {
         }
 
         return await withCheckedContinuation { continuation in
+            // A prompt selection already in flight (rapid stop/start) would
+            // otherwise have its continuation dropped here and hang forever.
+            if let pending = self.promptSelectionContinuation {
+                self.promptSelectionContinuation = nil
+                pending.resume(returning: .cancelled)
+            }
             self.promptSelectionContinuation = continuation
             startCountdown()
         }
@@ -348,12 +354,18 @@ class HUDWindowController: NSWindowController {
                 if self.hudState.countdownProgress <= 0 {
                     self.hudState.countdownProgress = 0
                     self.stopCountdown()
-                    // Auto-select default prompt
-                    if let defaultPrompt = self.hudState.availablePrompts.first(where: { $0.id == self.hudState.defaultPromptID }) {
-                        let continuation = self.promptSelectionContinuation
-                        self.promptSelectionContinuation = nil
-                        self.resetPromptSelectionSize()
+                    // Auto-select default prompt. If the saved default no longer
+                    // exists (deleted or stale ID) we must still resume the
+                    // continuation, otherwise showPromptSelection() awaits
+                    // forever and the HUD sticks in .selectingPrompt.
+                    let defaultPrompt = self.hudState.availablePrompts.first(where: { $0.id == self.hudState.defaultPromptID })
+                    let continuation = self.promptSelectionContinuation
+                    self.promptSelectionContinuation = nil
+                    self.resetPromptSelectionSize()
+                    if let defaultPrompt {
                         continuation?.resume(returning: .selected(defaultPrompt))
+                    } else {
+                        continuation?.resume(returning: .skipped)
                     }
                 }
             }

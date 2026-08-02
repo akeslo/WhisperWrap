@@ -154,20 +154,17 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         setupHotKey()
     }
     
+    /// UserDefaults keys for the persisted dictation hotkey. Without these a
+    /// customized hotkey silently reverted to Option+Space on every relaunch.
+    static let hotkeyKeyCodeDefaultsKey = "dictationHotkeyKeyCode"
+    static let hotkeyModifiersDefaultsKey = "dictationHotkeyModifiers"
+
     private func setupHotKey() {
-        // Main dictation toggle: Option+Space (user-configurable)
-        hotKeyManager.register(keyCode: kVK_Space, modifiers: optionKey) { [weak self] in
-            Task { @MainActor in
-                guard let self = self else { return }
-                if HUDWindowController.shared.isSelectingPrompt {
-                    HUDWindowController.shared.skipPromptSelection()
-                } else if self.isProcessing {
-                    self.cancelTranscription()
-                } else {
-                    self.toggleRecording()
-                }
-            }
-        }
+        // Main dictation toggle: Option+Space by default, overridden by any saved hotkey.
+        let defaults = UserDefaults.standard
+        let keyCode = defaults.object(forKey: Self.hotkeyKeyCodeDefaultsKey) as? Int ?? kVK_Space
+        let modifiers = defaults.object(forKey: Self.hotkeyModifiersDefaultsKey) as? Int ?? optionKey
+        registerDictationHotkey(keyCode: keyCode, modifiers: modifiers)
         // Show last transcription + AI output: Option+Shift+V
         hotKeyManager.registerAdditional(id: 2, keyCode: kVK_ANSI_V, modifiers: optionKey | shiftKey) { [weak self] in
             Task { @MainActor in
@@ -401,6 +398,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     func setHotkey(keyCode: Int, modifiers: Int) {
+        UserDefaults.standard.set(keyCode, forKey: Self.hotkeyKeyCodeDefaultsKey)
+        UserDefaults.standard.set(modifiers, forKey: Self.hotkeyModifiersDefaultsKey)
+        registerDictationHotkey(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    /// Single registration path for the dictation toggle, shared by first-launch
+    /// setup and user reconfiguration so the two can't drift apart.
+    private func registerDictationHotkey(keyCode: Int, modifiers: Int) {
         hotKeyManager.register(keyCode: keyCode, modifiers: modifiers) { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
@@ -544,11 +549,29 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     HUDWindowController.shared.show()
                 }
             } else {
-                LoggerService.shared.debug("Failed to start recording")
+                presentRecordingFailure("Couldn't start recording. Check the selected input device.")
             }
 
         } catch {
-            LoggerService.shared.debug("Error setting up recording: \(error.localizedDescription)")
+            presentRecordingFailure("Couldn't start recording: \(error.localizedDescription)")
+        }
+    }
+
+    /// Surface a recording-start failure to the user. Without this the hotkey press
+    /// produces no HUD, no alert and no recording — a completely silent failure that
+    /// only ever reached the debug log.
+    private func presentRecordingFailure(_ message: String) {
+        LoggerService.shared.debug("Recording failed: \(message)")
+        isRecording = false
+        isProcessing = false
+        audioLevel = 0
+        transcribedText = message
+
+        if showHUD {
+            HUDWindowController.shared.setStatus(.showingResults)
+            HUDWindowController.shared.updateStreamingText("⚠️ \(message)")
+            HUDWindowController.shared.show()
+            HUDWindowController.shared.showResultsThenFade(duration: 4.0)
         }
     }
     
@@ -622,7 +645,17 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func transcribe(url: URL) {
-        guard let contentViewModel = contentViewModel else { return }
+        guard let contentViewModel = contentViewModel else {
+            // stopRecording() already put the HUD into .transcribing; bailing out
+            // silently here leaves it on screen forever with isProcessing stuck.
+            isProcessing = false
+            if showHUD {
+                HUDWindowController.shared.clearStreamingText(animated: false)
+                HUDWindowController.shared.hide()
+            }
+            LoggerService.shared.debug("Transcription requested with no ContentViewModel — nothing to transcribe")
+            return
+        }
 
         isProcessing = true
 
