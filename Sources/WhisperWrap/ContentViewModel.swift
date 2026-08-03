@@ -122,7 +122,7 @@ class ContentViewModel: ObservableObject {
                 if Task.isCancelled { return }
 
                 // Write to temp file then move to input dir
-                let tempDir = FileManager.default.temporaryDirectory
+                let tempDir = try Self.ensureScratchDirectory()
                 let baseName = fileURL.deletingPathExtension().lastPathComponent
                 let tempOutputURL = tempDir.appendingPathComponent("\(baseName).\(format)")
                 try transcribedText.write(to: tempOutputURL, atomically: true, encoding: .utf8)
@@ -187,9 +187,22 @@ class ContentViewModel: ObservableObject {
         }
     }
 
+    /// Scratch directory for transcription output staged before the move next to the
+    /// input file. Must be a WhisperWrap-owned subdirectory, never the shared temp dir
+    /// itself: `cleanupOldTempFiles()` deletes by extension, and pointed at the shared
+    /// directory it would reap `.txt`/`.srt`/`.json` files belonging to other processes.
+    static let scratchDirectory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WhisperWrap", isDirectory: true)
+
+    private static func ensureScratchDirectory() throws -> URL {
+        let dir = scratchDirectory
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     private func cleanupOldTempFiles() {
         Task {
-            let tempDir = FileManager.default.temporaryDirectory
+            let tempDir = Self.scratchDirectory
             let fileManager = FileManager.default
             do {
                 let contents = try fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles)

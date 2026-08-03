@@ -357,8 +357,9 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
                 let (bytes, response) = try await URLSession.shared.bytes(for: request)
                 
                 if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
-                    var errorData = Data()
-                    for try await byte in bytes { errorData.append(byte) }
+                    var errorBuffer = [UInt8]()
+                    for try await byte in bytes { errorBuffer.append(byte) }
+                    let errorData = Data(errorBuffer)
                     
                     var displayMessage = "Error (\(httpResponse.statusCode))"
                     
@@ -382,23 +383,32 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
                     return
                 }
                 
-                var data = Data()
+                // Accumulate into a plain byte buffer and track the last reported
+                // progress locally. Appending to `Data` and comparing against the
+                // @Published `downloadProgress` once per byte made a multi-hundred-KB
+                // response cost hundreds of thousands of MainActor property reads,
+                // so the download ran far slower than the network delivering it.
                 let totalBytes = response.expectedContentLength
+                var buffer = [UInt8]()
+                if totalBytes > 0 { buffer.reserveCapacity(Int(totalBytes)) }
                 var receivedBytes: Int64 = 0
-                
+                var lastReportedProgress: Double = 0
+
                 for try await byte in bytes {
-                    data.append(byte)
+                    buffer.append(byte)
                     receivedBytes += 1
-                    
+
                     if totalBytes > 0 {
                         let progress = Double(receivedBytes) / Double(totalBytes)
                         // Throttle UI updates slightly
-                        if abs(progress - self.downloadProgress) > 0.05 || receivedBytes == totalBytes {
+                        if progress - lastReportedProgress > 0.05 || receivedBytes == totalBytes {
+                            lastReportedProgress = progress
                             self.downloadProgress = progress
                         }
                     }
                 }
-                
+                let data = Data(buffer)
+
                 // Save to Cache
                 self.lastAudioData = data
                 self.lastCacheKey = cacheKey

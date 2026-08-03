@@ -92,8 +92,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     // Audio Device Selection
     @Published var availableAudioDevices: [(id: String, name: String)] = []
+    /// Set while `loadAudioDevices()` substitutes an available device for one that is
+    /// currently unplugged. Suppresses persistence so a temporarily absent mic does not
+    /// permanently overwrite the user's saved choice with whatever happened to be first.
+    private var isApplyingDeviceFallback = false
+
     @Published var selectedAudioDeviceID: String? {
         didSet {
+            guard !isApplyingDeviceFallback else { return }
             if let id = selectedAudioDeviceID {
                 UserDefaults.standard.set(id, forKey: "selectedAudioDeviceID")
             } else {
@@ -332,11 +338,25 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
         self.availableAudioDevices = devices
 
-        // If no device is selected or saved device doesn't exist, default to first available device
-        if selectedAudioDeviceID == nil ||
-           !devices.contains(where: { $0.id == selectedAudioDeviceID }) {
-            selectedAudioDeviceID = devices.first?.id
+        // Prefer the user's persisted choice whenever that device is present — including
+        // when it reappears after being unplugged. Only when it is genuinely unavailable
+        // do we fall back to the first device, and that fallback is not persisted.
+        let preferredID = UserDefaults.standard.string(forKey: "selectedAudioDeviceID")
+        if let preferredID, devices.contains(where: { $0.id == preferredID }) {
+            if selectedAudioDeviceID != preferredID {
+                applyDeviceFallback(preferredID)
+            }
+        } else if selectedAudioDeviceID == nil ||
+                  !devices.contains(where: { $0.id == selectedAudioDeviceID }) {
+            applyDeviceFallback(devices.first?.id)
         }
+    }
+
+    /// Changes the in-use device without touching the persisted preference.
+    private func applyDeviceFallback(_ deviceID: String?) {
+        isApplyingDeviceFallback = true
+        selectedAudioDeviceID = deviceID
+        isApplyingDeviceFallback = false
     }
 
     func switchAudioDevice(_ deviceID: String) {
