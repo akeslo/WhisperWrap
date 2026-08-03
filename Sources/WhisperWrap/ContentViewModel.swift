@@ -145,7 +145,10 @@ class ContentViewModel: ObservableObject {
                         let stream = claudeService.process(text: transcribedText, prompt: prompt.prompt, model: claudeModel)
                         var streamedResult = ""
                         for await chunk in stream {
-                            if Task.isCancelled { break }
+                            // Return, not break: breaking falls through to the save
+                            // block below and writes partial Claude output next to the
+                            // input file (and reveals it in Finder) after a cancel.
+                            if Task.isCancelled { return }
                             streamedResult += chunk
                             claudeStreamingOutput = streamedResult
                         }

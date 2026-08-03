@@ -596,6 +596,10 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     func stopRecording() {
+        // A stop can arrive after the take already ended (notification action button,
+        // recorder delegate failure). Without this guard the HUD flips back to
+        // .transcribing and transcription re-runs against an already-deleted temp file.
+        guard isRecording else { return }
         audioRecorder?.stop()
         isRecording = false
         stopMonitoring()
@@ -627,6 +631,10 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         if saveRecordings, let saveDir = recordingsSaveDirectory {
             saveRecording(from: url, to: saveDir)
         }
+
+        // Release the recorder now that we own the URL — the temp file is consumed
+        // (and deleted) by transcription, so nothing should be able to reuse it.
+        audioRecorder = nil
 
         LoggerService.shared.debug("Recording stopped — starting transcription")
         transcribe(url: url)
@@ -804,6 +812,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 LoggerService.shared.debug("Transcription error: \(msg)")
                 self.transcribedText = "Error: \(msg)"
                 if self.showHUD {
+                    HUDWindowController.shared.setStatus(.showingResults)
                     HUDWindowController.shared.updateStreamingText("Error: \(msg)")
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }

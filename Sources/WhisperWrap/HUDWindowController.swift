@@ -122,8 +122,11 @@ class HUDWindowController: NSWindowController {
     
     func updateAudioLevel(_ level: Float) {
         hudState.audioLevel = level
-        // We don't need to call show() to re-layout, just updating state diffs the UI
-        if !window!.isVisible {
+        // We don't need to call show() to re-layout, just updating state diffs the UI.
+        // Called from the 10Hz meter timer, so a nil window after teardown must skip
+        // the frame rather than crash the app.
+        guard let window else { return }
+        if !window.isVisible {
             show(audioLevel: level)
         }
     }

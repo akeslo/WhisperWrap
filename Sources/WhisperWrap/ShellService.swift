@@ -7,6 +7,47 @@ private struct UncheckedSendableBox<T>: @unchecked Sendable {
     init(_ value: T) { self.value = value }
 }
 
+/// Incremental UTF-8 decoder for piped output. A single `read()` can split a
+/// multi-byte character across chunk boundaries; decoding each chunk in
+/// isolation returns nil for the whole chunk and silently drops up to a full
+/// pipe read. This keeps the undecodable tail and prepends it to the next chunk.
+private final class UTF8StreamDecoder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var carry = Data()
+
+    /// Decodes as much of `data` as forms complete UTF-8, retaining any partial
+    /// trailing character for the next call. Returns nil when nothing is ready.
+    func decode(_ data: Data) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        carry.append(data)
+        // A UTF-8 sequence is at most 4 bytes, so at most 3 trailing bytes can
+        // be an incomplete character.
+        for backoff in 0...min(3, carry.count) {
+            let end = carry.count - backoff
+            if let text = String(data: carry.prefix(end), encoding: .utf8) {
+                carry.removeFirst(end)
+                return text.isEmpty ? nil : text
+            }
+        }
+        return nil
+    }
+
+    /// Final flush at EOF. Any bytes still undecodable here are genuinely
+    /// invalid rather than merely incomplete, so decode them lossily instead of
+    /// discarding them.
+    func flush() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !carry.isEmpty else { return nil }
+        let text = String(decoding: carry, as: UTF8.self)
+        carry.removeAll()
+        return text.isEmpty ? nil : text
+    }
+}
+
 final class ShellService: @unchecked Sendable {
     enum ShellError: Error {
         case commandFailed(String)
@@ -92,6 +133,8 @@ final class ShellService: @unchecked Sendable {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.environment = ShellService.enrichedEnvironment
 
+            let decoder = UTF8StreamDecoder()
+
             pipe.fileHandleForReading.readabilityHandler = { fileHandle in
                 let data = fileHandle.availableData
                 guard !data.isEmpty else {
@@ -99,7 +142,7 @@ final class ShellService: @unchecked Sendable {
                     fileHandle.readabilityHandler = nil
                     return
                 }
-                if let text = String(data: data, encoding: .utf8) {
+                if let text = decoder.decode(data) {
                     continuation.yield(text)
                 }
             }
@@ -108,8 +151,11 @@ final class ShellService: @unchecked Sendable {
                 // Stop handler first, then drain any remaining data
                 pipe.fileHandleForReading.readabilityHandler = nil
                 let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
-                if !remaining.isEmpty, let text = String(data: remaining, encoding: .utf8) {
+                if !remaining.isEmpty, let text = decoder.decode(remaining) {
                     continuation.yield(text)
+                }
+                if let tail = decoder.flush() {
+                    continuation.yield(tail)
                 }
                 continuation.finish()
             }
