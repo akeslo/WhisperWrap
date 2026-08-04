@@ -53,7 +53,25 @@ final class ShellService: @unchecked Sendable {
         case commandFailed(String)
     }
 
-    init() {}
+    init() {
+        _ = ShellService.sigpipeIgnored
+    }
+
+    /// Writing to a pipe whose reader has gone away delivers SIGPIPE, whose
+    /// default disposition kills the process outright — before any Swift error
+    /// handling runs, so `try?` around the write is not enough on its own.
+    /// Confirmed empirically: piping oversized stdin to a child that exits
+    /// without reading it killed the test binary with signal 13.
+    ///
+    /// Both shell paths write stdin from a detached task while the child may
+    /// already be gone (it can exit early, and `streamCommand` deliberately
+    /// terminates it when the consumer cancels), so a broken pipe here is
+    /// ordinary. Ignoring the signal turns it into the EPIPE error the throwing
+    /// write can report, which the callers discard.
+    private static let sigpipeIgnored: Bool = {
+        signal(SIGPIPE, SIG_IGN)
+        return true
+    }()
 
     private static let enrichedEnvironment: [String: String] = {
         var env = ProcessInfo.processInfo.environment
@@ -90,7 +108,13 @@ final class ShellService: @unchecked Sendable {
 
             if let data = stdinData {
                 Task.detached {
-                    inPipe.fileHandleForWriting.write(data)
+                    // write(_:) raises an ObjC exception on EPIPE, which is not
+                    // catchable in Swift and takes the app down. The child can be
+                    // gone before we finish writing -- it may exit early, or a
+                    // cancelled stream may have terminated it -- so a broken pipe
+                    // here is ordinary, not exceptional. The throwing variant
+                    // turns it into an error we can discard.
+                    try? inPipe.fileHandleForWriting.write(contentsOf: data)
                     try? inPipe.fileHandleForWriting.close()
                 }
             }
@@ -170,7 +194,11 @@ final class ShellService: @unchecked Sendable {
                 try process.run()
                 if let data = stdinData {
                     Task.detached {
-                        inPipe.fileHandleForWriting.write(data)
+                        // Same broken-pipe hazard as runCommand, and more likely
+                        // here: onTermination terminates the child when the
+                        // consumer cancels, which routinely happens mid-write for
+                        // a long transcript.
+                        try? inPipe.fileHandleForWriting.write(contentsOf: data)
                         try? inPipe.fileHandleForWriting.close()
                     }
                 }
