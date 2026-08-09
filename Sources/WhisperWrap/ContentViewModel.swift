@@ -219,7 +219,9 @@ class ContentViewModel: ObservableObject {
                         }
                     }
                 }
-            } catch {}
+            } catch {
+                LoggerService.shared.debug("Temp file cleanup failed: \(error)")
+            }
         }
     }
 }
