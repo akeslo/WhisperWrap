@@ -531,7 +531,12 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             // try audioSession.setCategory(.playAndRecord, mode: .default)
             // try audioSession.setActive(true) // Unnecessary/Unavailable on macOS
 
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("dictation.wav")
+            // Must live in ContentViewModel.scratchDirectory, not the shared system temp
+            // dir directly — cleanupOldTempFiles() only sweeps the former, so a recording
+            // left behind by a crash or force-quit here would never get reaped.
+            let scratchDir = ContentViewModel.scratchDirectory
+            try FileManager.default.createDirectory(at: scratchDir, withIntermediateDirectories: true)
+            let url = scratchDir.appendingPathComponent("dictation.wav")
 
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatLinearPCM),
