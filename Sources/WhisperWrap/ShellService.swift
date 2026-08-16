@@ -128,7 +128,13 @@ final class ShellService: @unchecked Sendable {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 let process = box.value
                 process.waitUntilExit()
-                let output = String(data: data, encoding: .utf8) ?? ""
+                // Lossy decode, not strict: a strict decode silently discards
+                // the entire output as "" if any byte in it is invalid UTF-8,
+                // even though most of the buffer may be perfectly good text
+                // (e.g. a child that emits one stray non-UTF-8 byte alongside
+                // otherwise valid stdout). streamCommand's flush() already
+                // does the lossy decode for its tail bytes; this matches it.
+                let output = String(decoding: data, as: UTF8.self)
 
                 if process.terminationStatus == 0 {
                     continuation.resume(returning: output)
