@@ -168,8 +168,18 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private func setupHotKey() {
         // Main dictation toggle: Option+Space by default, overridden by any saved hotkey.
         let defaults = UserDefaults.standard
-        let keyCode = defaults.object(forKey: Self.hotkeyKeyCodeDefaultsKey) as? Int ?? kVK_Space
-        let modifiers = defaults.object(forKey: Self.hotkeyModifiersDefaultsKey) as? Int ?? optionKey
+        var keyCode = defaults.object(forKey: Self.hotkeyKeyCodeDefaultsKey) as? Int ?? kVK_Space
+        var modifiers = defaults.object(forKey: Self.hotkeyModifiersDefaultsKey) as? Int ?? optionKey
+        // Guard against a corrupted persisted value (e.g. written directly via
+        // `defaults write` with a negative or out-of-range Int) — fall back to the
+        // default hotkey rather than handing HotKeyManager values it can't register (R3).
+        if UInt32(exactly: keyCode) == nil || UInt32(exactly: modifiers) == nil {
+            LoggerService.shared.debug("Corrupted hotkey defaults (keyCode=\(keyCode), modifiers=\(modifiers)) — resetting to Option+Space")
+            keyCode = kVK_Space
+            modifiers = optionKey
+            defaults.removeObject(forKey: Self.hotkeyKeyCodeDefaultsKey)
+            defaults.removeObject(forKey: Self.hotkeyModifiersDefaultsKey)
+        }
         registerDictationHotkey(keyCode: keyCode, modifiers: modifiers)
         // Show last transcription + AI output: Option+Shift+V
         hotKeyManager.registerAdditional(id: 2, keyCode: kVK_ANSI_V, modifiers: optionKey | shiftKey) { [weak self] in

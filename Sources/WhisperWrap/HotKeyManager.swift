@@ -66,13 +66,23 @@ class HotKeyManager: ObservableObject {
     private func registerHotKey(id: UInt32, keyCode: Int, modifiers: Int, handler: @escaping () -> Void) {
         unregister(id: id)
 
+        // A corrupted UserDefaults value (e.g. a negative or out-of-range keyCode written
+        // directly via `defaults write`) used to trap here via UInt32(keyCode), crashing
+        // the app on every launch until prefs were manually deleted (R3). Fail soft instead.
+        guard let keyCodeU32 = UInt32(exactly: keyCode), let modifiersU32 = UInt32(exactly: modifiers) else {
+            Task { @MainActor in
+                LoggerService.shared.debug("Refusing to register hotkey \(id): keyCode \(keyCode) / modifiers \(modifiers) out of range")
+            }
+            return
+        }
+
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = Self.signature
         hotKeyID.id = id
 
         var hotKeyRef: EventHotKeyRef?
-        let status = RegisterEventHotKey(UInt32(keyCode),
-                                         UInt32(modifiers),
+        let status = RegisterEventHotKey(keyCodeU32,
+                                         modifiersU32,
                                          hotKeyID,
                                          GetApplicationEventTarget(),
                                          0,
