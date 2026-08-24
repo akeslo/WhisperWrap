@@ -6,7 +6,10 @@ let package = Package(
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "1.0.0"),
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.14.7"),
+        // Pre-1.0, so an open `from:` range risks resolving an API-breaking 0.15
+        // (e.g. VadManager.chunkSize) on a fresh `swift package update`. Tightened
+        // per AUDIT.md §6.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", .upToNextMinor(from: "0.14.7")),
     ],
     targets: [
         .executableTarget(
