@@ -115,6 +115,19 @@ struct DictationSettingsView: View {
         }
         .padding(.horizontal)
 
+        // MARK: - Last Dictation Section
+        GroupBox(label: Label("Last Dictation", systemImage: "text.bubble")) {
+            VStack(alignment: .leading, spacing: 12) {
+                lastDictationSection(title: "Transcription", text: viewModel.lastRawTranscription)
+                if !viewModel.lastProcessedOutput.isEmpty {
+                    Divider()
+                    lastDictationSection(title: "AI Output", text: viewModel.lastProcessedOutput)
+                }
+            }
+            .padding(8)
+        }
+        .padding(.horizontal)
+
         // MARK: - Claude Processing Section
         GroupBox(label: Label("Claude Processing", systemImage: "brain")) {
             VStack(alignment: .leading, spacing: 12) {
@@ -321,6 +334,28 @@ struct DictationSettingsView: View {
                 claudeSetupError = claudeService.authError ?? "Claude CLI is not authenticated. Run 'claude' in your terminal to log in."
                 showClaudeSetupAlert = true
             }
+        }
+    }
+
+    @ViewBuilder
+    private func lastDictationSection(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                Spacer()
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }
+                .disabled(text.isEmpty)
+            }
+            Text(text.isEmpty ? "No transcription yet." : text)
+                .font(.system(.body, design: .default))
+                .foregroundColor(text.isEmpty ? .secondary : .primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(6)
         }
     }
 }
