@@ -42,7 +42,10 @@ class HUDWindowController: NSWindowController {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isMovableByWindowBackground = true // Make draggable
+        // A stray click-drag on the HUD background used to relocate it, and that
+        // relocated point became the saved position for every future show() —
+        // the HUD isn't meant to be user-repositioned, so it's fixed in place.
+        panel.isMovableByWindowBackground = false
 
         super.init(window: panel)
 
@@ -111,6 +114,16 @@ class HUDWindowController: NSWindowController {
         window.orderFront(nil)
     }
     
+    /// Clears any saved position and snaps the HUD back to its default bottom-center spot.
+    func resetPosition() {
+        hudState.currentPosition = nil
+        guard let window, let screen = NSScreen.screens.first else { return }
+        let screenRect = screen.visibleFrame
+        let x = screenRect.midX - (window.frame.width / 2)
+        let y = screenRect.minY + 50
+        window.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
     func hide() {
         guard let window = window else { return }
         cancelPendingFade()
@@ -197,29 +210,16 @@ class HUDWindowController: NSWindowController {
             let newWidth: CGFloat = hasText ? 500 : 450
             let currentFrame = panel.frame
             guard abs(currentFrame.size.height - newHeight) > 1 || abs(currentFrame.size.width - newWidth) > 1 else { return }
-            var frame = currentFrame
-            frame.size.height = newHeight
-            frame.size.width = newWidth
-            // Adjust vertical origin when expanding to keep top edge stable
-            let heightDelta = newHeight - currentFrame.size.height
-            if heightDelta > 0 {
-                frame.origin.y -= heightDelta / 2
-            }
+            let frame = frameKeepingBottomCenter(width: newWidth, height: newHeight)
             resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
     }
 
     func clearStreamingText(animated: Bool = true) {
         hudState.streamingText = ""
-        // Reset window size and adjust vertical origin to prevent off-screen drift
-        if let panel = window {
-            var frame = panel.frame
-            let newHeight: CGFloat = 80
-            let newWidth: CGFloat = 450
-            let heightDelta = newHeight - frame.size.height
-            frame.size.height = newHeight
-            frame.size.width = newWidth
-            frame.origin.y -= heightDelta / 2
+        // Reset window size to prevent off-screen drift
+        if window != nil {
+            let frame = frameKeepingBottomCenter(width: 450, height: 80)
             resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
     }
@@ -233,12 +233,9 @@ class HUDWindowController: NSWindowController {
         cancelPendingFade()
 
         // Expand height to fit copy footer
-        var frame = panel.frame
         let targetHeight: CGFloat = 315
-        if abs(frame.size.height - targetHeight) > 1 {
-            let delta = targetHeight - frame.size.height
-            frame.size.height = targetHeight
-            frame.origin.y -= delta
+        if abs(panel.frame.size.height - targetHeight) > 1 {
+            let frame = frameKeepingBottomCenter(width: panel.frame.width, height: targetHeight)
             resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
 
@@ -281,16 +278,8 @@ class HUDWindowController: NSWindowController {
         hudState.status = .selectingPrompt
 
         // Resize window for prompt selection (wider to fit all buttons)
-        if let panel = window {
-            var frame = panel.frame
-            let newHeight: CGFloat = 130
-            let newWidth: CGFloat = 550
-            let heightDiff = newHeight - frame.height
-            let widthDiff = newWidth - frame.width
-            frame.size.height = newHeight
-            frame.size.width = newWidth
-            frame.origin.y -= heightDiff
-            frame.origin.x -= widthDiff / 2 // Keep centered
+        if window != nil {
+            let frame = frameKeepingBottomCenter(width: 550, height: 130)
             resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
 
@@ -439,18 +428,22 @@ class HUDWindowController: NSWindowController {
     }
 
     private func resetPromptSelectionSize() {
-        if let panel = window {
-            var frame = panel.frame
-            let newHeight: CGFloat = 80
-            let newWidth: CGFloat = 450
-            let heightDiff = newHeight - frame.height
-            let widthDiff = newWidth - frame.width
-            frame.size.height = newHeight
-            frame.size.width = newWidth
-            frame.origin.y -= heightDiff
-            frame.origin.x -= widthDiff / 2 // Keep centered
+        if window != nil {
+            let frame = frameKeepingBottomCenter(width: 450, height: 80)
             resizeWindowOnPrimaryScreen(to: frame, centerVerticallyIfNeeded: true)
         }
+    }
+
+    /// Computes a frame of the given size anchored to the window's current bottom-center point.
+    /// All in-place HUD resizes (streaming text, results, prompt picker) route through this so
+    /// growing and shrinking are exact inverses of each other — no per-callsite delta math that
+    /// can disagree between callsites and let the HUD walk across the screen over a session.
+    private func frameKeepingBottomCenter(width: CGFloat, height: CGFloat) -> NSRect {
+        guard let panel = window else { return NSRect(x: 0, y: 0, width: width, height: height) }
+        let current = panel.frame
+        let x = current.midX - width / 2
+        let y = current.minY
+        return NSRect(x: x, y: y, width: width, height: height)
     }
 
     // MARK: - Clipboard

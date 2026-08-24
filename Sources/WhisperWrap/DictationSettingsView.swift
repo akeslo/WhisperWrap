@@ -71,6 +71,16 @@ struct DictationSettingsView: View {
                 HStack {
                     Toggle("Auto Copy", isOn: $viewModel.autoCopy)
                     Toggle("Show HUD", isOn: $viewModel.showHUD)
+
+                    if viewModel.showHUD {
+                        Button("Reset HUD Position") {
+                            HUDWindowController.shared.resetPosition()
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .foregroundColor(.accentColor)
+                    }
+
                     Toggle("Save Recordings", isOn: Binding(
                         get: { viewModel.saveRecordings },
                         set: { newValue in
@@ -165,7 +175,7 @@ struct DictationSettingsView: View {
                 }
 
                 if viewModel.claudeEnabled {
-                    Text("A 3-second prompt picker appears after each transcription — pick one or it uses your default. ⌥⇧V shows the last transcription and AI output.")
+                    Text("A prompt picker appears after each transcription — pick one or it uses your default after \(Int(promptPickerCountdownDuration))s. ⌥⇧V shows the last transcription and AI output.")
                         .font(.caption)
                         .foregroundColor(.secondary)
 

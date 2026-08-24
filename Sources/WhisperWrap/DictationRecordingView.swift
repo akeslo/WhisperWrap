@@ -50,31 +50,6 @@ struct DictationRecordingView: View {
             }
             .frame(height: 100)
             
-            // MARK: - Output
-            if !viewModel.transcribedText.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Transcription")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    TextEditor(text: $viewModel.transcribedText)
-                        .font(.body)
-                        .padding(8)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .cornerRadius(8)
-                        .frame(minHeight: 100, maxHeight: 200)
-                    
-                    Button("Copy to Clipboard") {
-                        let pasteboard = NSPasteboard.general
-                        pasteboard.clearContents()
-                        pasteboard.setString(viewModel.transcribedText, forType: .string)
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    .foregroundColor(.accentColor)
-                }
-            }
-            
             // MARK: - Controls
             HStack(spacing: 20) {
                 if viewModel.isRecording {
