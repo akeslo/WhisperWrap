@@ -342,8 +342,18 @@ class HUDWindowController: NSWindowController {
         continuation?.resume(returning: .cancelled)
     }
 
+    /// Seconds the prompt-picker HUD waits before auto-selecting the default prompt.
+    /// Configurable via Settings; persisted so the picker and the settings UI stay in sync.
+    static var promptPickerCountdownDuration: Double {
+        get {
+            let stored = UserDefaults.standard.double(forKey: "promptPickerCountdownDuration")
+            return stored > 0 ? stored : 5.0
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "promptPickerCountdownDuration") }
+    }
+
     private func startCountdown() {
-        let totalDuration: Double = 3.0
+        let totalDuration: Double = Self.promptPickerCountdownDuration
         let interval: Double = 0.05
         let decrement = interval / totalDuration
 

@@ -6,6 +6,7 @@ struct DictationSettingsView: View {
     @ObservedObject var claudeService: ClaudeService
     @ObservedObject var claudePromptManager: ClaudePromptManager
 
+    @AppStorage("promptPickerCountdownDuration") private var promptPickerCountdownDuration: Double = 5.0
     @State private var claudeSetupError: String?
     @State private var showClaudeSetupAlert = false
     @State private var isCheckingClaude = false
@@ -44,6 +45,23 @@ struct DictationSettingsView: View {
                     }
                     .labelsHidden()
                     .frame(width: 200)
+
+                    Spacer()
+                }
+
+                Divider()
+
+                HStack {
+                    Text("Prompt picker timeout")
+                    Stepper(
+                        value: $promptPickerCountdownDuration,
+                        in: 2...30,
+                        step: 1
+                    ) {
+                        Text("\(Int(promptPickerCountdownDuration))s")
+                            .monospacedDigit()
+                    }
+                    .frame(width: 140)
 
                     Spacer()
                 }
