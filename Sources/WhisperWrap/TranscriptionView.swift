@@ -292,7 +292,6 @@ struct TranscriptionView: View {
             .frame(minHeight: 120)
         }
         .padding()
-        .onAppear { }
     }
 
     private func enableClaude() {

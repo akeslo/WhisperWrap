@@ -114,14 +114,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    private func showMainWindow() {
-        logToFile("showMainWindow called")
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
-
     func logToFile(_ text: String) {
         LoggerService.shared.debug(text)
     }
