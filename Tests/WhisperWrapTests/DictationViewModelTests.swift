@@ -362,3 +362,42 @@ class MockClaudePromptManager: ClaudePromptManager {
         [ClaudePrompt.builtinPolish, ClaudePrompt.builtinSummarize]
     }
 }
+
+// MARK: - uniqueRecordingURL (A-SLOP-11: same-second saved-take filename collision)
+
+final class UniqueRecordingURLTests: XCTestCase {
+    private let directory = URL(fileURLWithPath: "/tmp/WhisperWrapTests-recordings")
+
+    func testNoCollision_ReturnsBaseFilename() {
+        let url = DictationViewModel.uniqueRecordingURL(
+            baseTimestamp: "2026-08-24_09-00-00",
+            in: directory,
+            fileExists: { _ in false }
+        )
+        XCTAssertEqual(url.lastPathComponent, "recording_2026-08-24_09-00-00.wav")
+    }
+
+    func testSingleCollision_AppendsSuffix2() {
+        let existing = directory.appendingPathComponent("recording_2026-08-24_09-00-00.wav")
+        let url = DictationViewModel.uniqueRecordingURL(
+            baseTimestamp: "2026-08-24_09-00-00",
+            in: directory,
+            fileExists: { $0 == existing }
+        )
+        XCTAssertEqual(url.lastPathComponent, "recording_2026-08-24_09-00-00_2.wav")
+    }
+
+    func testMultipleCollisions_IncrementsUntilFree() {
+        let taken: Set<String> = [
+            "recording_2026-08-24_09-00-00.wav",
+            "recording_2026-08-24_09-00-00_2.wav",
+            "recording_2026-08-24_09-00-00_3.wav",
+        ]
+        let url = DictationViewModel.uniqueRecordingURL(
+            baseTimestamp: "2026-08-24_09-00-00",
+            in: directory,
+            fileExists: { taken.contains($0.lastPathComponent) }
+        )
+        XCTAssertEqual(url.lastPathComponent, "recording_2026-08-24_09-00-00_4.wav")
+    }
+}

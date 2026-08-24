@@ -659,8 +659,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = dateFormatter.string(from: Date())
-        let filename = "recording_\(timestamp).wav"
-        let destinationURL = directory.appendingPathComponent(filename)
+        let destinationURL = Self.uniqueRecordingURL(baseTimestamp: timestamp, in: directory)
 
         do {
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
@@ -669,7 +668,25 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             LoggerService.shared.debug("Failed to save recording: \(error.localizedDescription)")
         }
     }
-    
+
+    /// Builds a save-recording filename that won't collide with an existing file from a
+    /// prior take in the same second. Pure and static so it's directly testable — the
+    /// original code always produced `recording_<timestamp>.wav` and silently lost a take
+    /// if `FileManager.copyItem` hit an existing file with that name (A-SLOP-11).
+    nonisolated static func uniqueRecordingURL(
+        baseTimestamp: String,
+        in directory: URL,
+        fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
+    ) -> URL {
+        var candidate = directory.appendingPathComponent("recording_\(baseTimestamp).wav")
+        var suffix = 2
+        while fileExists(candidate) {
+            candidate = directory.appendingPathComponent("recording_\(baseTimestamp)_\(suffix).wav")
+            suffix += 1
+        }
+        return candidate
+    }
+
     func cancelRecording() {
         audioRecorder?.stop()
         audioRecorder?.deleteRecording()

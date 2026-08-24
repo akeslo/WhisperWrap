@@ -33,8 +33,17 @@ final class FluidVADProcessor: @unchecked Sendable {
             let speechSamples = extractSpeech(samples: samples, regions: regions)
             guard speechSamples.count > Self.sampleRate / 2 else { return nil }
 
-            let outURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("dictation_trimmed.wav")
+            // Route through the WhisperWrap-owned scratch directory, not the shared
+            // per-user temp dir directly — matches the convention that already applies
+            // to dictation.wav (fixed 2026-08-03), so a crash mid-transcription leaves
+            // this file somewhere the app can find and reap it, not stray in shared temp
+            // forever (REMEDIATION_PLAN.md R9 / A-SEC-6). Path literal duplicated from
+            // ContentViewModel.scratchDirectory rather than referenced directly — that
+            // property is @MainActor-isolated and this method isn't.
+            let scratchDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("WhisperWrap", isDirectory: true)
+            try FileManager.default.createDirectory(at: scratchDir, withIntermediateDirectories: true)
+            let outURL = scratchDir.appendingPathComponent("dictation_trimmed.wav")
             try writePCM(samples: speechSamples, to: outURL)
             return outURL
         } catch {
