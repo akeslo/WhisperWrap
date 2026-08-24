@@ -98,11 +98,28 @@ class WhisperTranscriptionEngine: ObservableObject {
 
         let results = try await pipe.transcribe(audioPath: audioURL.path)
         let allSegments = results.flatMap { $0.segments }
+            .map { ExportedSegment(start: $0.start, end: $0.end, text: $0.text) }
+        return try Self.format(segments: allSegments, as: format)
+    }
 
+    /// A transcription segment decoupled from WhisperKit's own segment type, so the pure
+    /// formatting logic below can be tested without a loaded model.
+    struct ExportedSegment: Encodable {
+        let start: Float
+        let end: Float
+        let text: String
+    }
+
+    /// Pure formatting of transcribed segments into txt/srt/json — extracted so it can be
+    /// unit tested without WhisperKit. Fixes R7: the json case used to be hand-rolled string
+    /// interpolation that only escaped `"`, producing invalid JSON for any transcript
+    /// containing a backslash, newline, or other control character, and emitted JSONL under
+    /// a ".json" extension. Now uses JSONEncoder and emits a proper JSON array.
+    static func format(segments: [ExportedSegment], as format: String) throws -> String {
         switch format {
         case "srt":
             var lines: [String] = []
-            for (i, seg) in allSegments.enumerated() {
+            for (i, seg) in segments.enumerated() {
                 lines.append("\(i + 1)")
                 lines.append("\(formatSRTTime(seg.start)) --> \(formatSRTTime(seg.end))")
                 lines.append(seg.text.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -111,20 +128,19 @@ class WhisperTranscriptionEngine: ObservableObject {
             return lines.joined(separator: "\n")
 
         case "json":
-            let jsonLines = allSegments.map { seg -> String in
-                let escaped = seg.text.replacingOccurrences(of: "\"", with: "\\\"")
-                return "{\"start\":\(seg.start),\"end\":\(seg.end),\"text\":\"\(escaped)\"}"
-            }
-            return jsonLines.joined(separator: "\n")
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(segments)
+            return String(data: data, encoding: .utf8) ?? "[]"
 
         default: // "txt"
-            return allSegments.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            return segments.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
-    private func formatSRTTime(_ seconds: Float) -> String {
+    private static func formatSRTTime(_ seconds: Float) -> String {
         let total = Int(seconds)
         let ms = Int((seconds - Float(total)) * 1000)
         let h = total / 3600
