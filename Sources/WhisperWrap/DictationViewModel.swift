@@ -815,7 +815,10 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 self.lastRawTranscription = originalTranscription
                 self.lastProcessedOutput = (text != originalTranscription) ? text : ""
 
-                if autoCopy {
+                // U4: "No Speech Detected" is an in-app sentinel for the HUD/last-result
+                // display, not a transcript — copying it would clobber whatever the user
+                // actually had on their clipboard for a take that produced no text.
+                if autoCopy && text != ContentViewModel.noSpeechDetectedSentinel {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
                 }

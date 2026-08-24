@@ -66,10 +66,14 @@ class ContentViewModel: ObservableObject {
         try? FileManager.default.removeItem(at: audioURL)
 
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "No Speech Detected"
+            return Self.noSpeechDetectedSentinel
         }
         return text
     }
+
+    /// Display-only sentinel for a take that produced no transcribable speech. Never
+    /// auto-copied — see the autoCopy guard in DictationViewModel (U4).
+    static let noSpeechDetectedSentinel = "No Speech Detected"
 
     func cancelTranscription() {
         processingTask?.cancel()

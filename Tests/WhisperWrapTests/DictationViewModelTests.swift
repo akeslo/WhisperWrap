@@ -151,6 +151,36 @@ final class DictationViewModelTests: XCTestCase {
         XCTAssertEqual(clipboard, originalClipboard)
     }
 
+    // MARK: - U4: "No Speech Detected" sentinel is never auto-copied
+
+    func testAutoCopyTrue_DoesNotCopyNoSpeechDetectedSentinel() async throws {
+        let viewModel = DictationViewModel()
+        let mockClaudeService = MockClaudeService()
+        let mockClaudePromptManager = MockClaudePromptManager()
+        let mockContentViewModel = MockContentViewModel()
+
+        viewModel.claudeService = mockClaudeService
+        viewModel.claudePromptManager = mockClaudePromptManager
+        viewModel.contentViewModel = mockContentViewModel
+
+        let originalClipboard = "something the user actually copied"
+        let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
+
+        viewModel.autoCopy = true
+        viewModel.claudeEnabled = false
+        // transcribeDictation returns this literal sentinel for a take with no speech
+        // (ContentViewModel.transcribeDictation / noSpeechDetectedSentinel).
+        mockContentViewModel.transcriptionResult = ContentViewModel.noSpeechDetectedSentinel
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(originalClipboard, forType: .string)
+
+        viewModel.transcribe(url: audioURL)
+        await waitForProcessing(viewModel)
+
+        let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
+        XCTAssertEqual(clipboard, originalClipboard, "the no-speech sentinel must never overwrite the user's clipboard")
+    }
+
     // MARK: - Test 6: Empty/Whitespace Transcription
 
     func testEmptyTranscription_HandlesGracefully() async throws {
