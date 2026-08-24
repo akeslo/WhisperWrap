@@ -33,6 +33,11 @@ struct MenuBarView: View {
                 Button(action: {
                     if viewModel.isRecording {
                         viewModel.stopRecording()
+                    } else if viewModel.isProcessing {
+                        // A transcription is in flight against the fixed dictation.wav —
+                        // starting a new recording here would truncate the file the
+                        // in-flight transcription is still reading.
+                        viewModel.cancelTranscription()
                     } else {
                         viewModel.startRecording()
                     }
