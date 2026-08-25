@@ -380,11 +380,13 @@ final class ContentViewModelTests: XCTestCase {
         )
     }
 
-    func testReplacesExistingOutputFileCorrectly() async throws {
-        // Given
+    func testDoesNotOverwriteExistingOutputFile() async throws {
+        // Given: an output file already exists next to the input (e.g. the user's own
+        // hand-edited transcript from a prior run).
         let audioURL = createTestAudioFile(name: "overwrite-test.mp3")
         let oldOutput = audioURL.deletingPathExtension().appendingPathExtension("txt")
-        try "Old content that should be replaced".write(to: oldOutput, atomically: true, encoding: .utf8)
+        let oldContent = "Old content that should NOT be replaced"
+        try oldContent.write(to: oldOutput, atomically: true, encoding: .utf8)
 
         let newTranscription = "New transcription content"
         mockTranscriptionEngine.nextTranscription = newTranscription
@@ -399,9 +401,15 @@ final class ContentViewModelTests: XCTestCase {
             useClaude: false
         )
 
-        // Then
-        let content = try String(contentsOf: oldOutput, encoding: .utf8)
-        XCTAssertEqual(content, newTranscription)
+        // Then: the pre-existing file is untouched, and the new transcription lands
+        // alongside it under a uniquified name instead of silently clobbering it (R8/U19).
+        let preservedContent = try String(contentsOf: oldOutput, encoding: .utf8)
+        XCTAssertEqual(preservedContent, oldContent)
+
+        let uniquifiedOutput = audioURL.deletingLastPathComponent()
+            .appendingPathComponent("overwrite-test 2.txt")
+        let newContent = try String(contentsOf: uniquifiedOutput, encoding: .utf8)
+        XCTAssertEqual(newContent, newTranscription)
         XCTAssertTrue(viewModel.consoleOutput.contains("✅ Transcription saved"))
     }
 

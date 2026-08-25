@@ -174,10 +174,10 @@ class ContentViewModel: ObservableObject {
                 consoleOutput += "\n💾 Saving transcription...\n"
 
                 let inputDir = fileURL.deletingLastPathComponent()
-                let finalURL = inputDir.appendingPathComponent(tempOutputURL.lastPathComponent)
-                if FileManager.default.fileExists(atPath: finalURL.path) {
-                    try FileManager.default.removeItem(at: finalURL)
-                }
+                let finalURL = Self.uniqueDestination(
+                    for: tempOutputURL.lastPathComponent,
+                    in: inputDir
+                )
                 try FileManager.default.moveItem(at: tempOutputURL, to: finalURL)
 
                 processingProgress = 1.0
@@ -205,6 +205,27 @@ class ContentViewModel: ObservableObject {
         let dir = scratchDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    /// Finds a non-colliding destination for `filename` inside `directory`, appending
+    /// " 2", " 3", ... before the extension (matching Finder's own collision naming)
+    /// rather than silently overwriting an existing file — including one the user has
+    /// since edited by hand. (R8/U19)
+    static func uniqueDestination(for filename: String, in directory: URL) -> URL {
+        let candidate = directory.appendingPathComponent(filename)
+        guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
+
+        let ext = (filename as NSString).pathExtension
+        let base = (filename as NSString).deletingPathExtension
+        var counter = 2
+        while true {
+            let numbered = ext.isEmpty ? "\(base) \(counter)" : "\(base) \(counter).\(ext)"
+            let numberedURL = directory.appendingPathComponent(numbered)
+            if !FileManager.default.fileExists(atPath: numberedURL.path) {
+                return numberedURL
+            }
+            counter += 1
+        }
     }
 
     private func cleanupOldTempFiles() {
