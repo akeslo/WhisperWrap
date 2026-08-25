@@ -47,7 +47,7 @@ struct MenuBarView: View {
                         Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.fill")
                         Text(viewModel.isRecording ? "Stop Recording" : "Start Recording")
                         Spacer()
-                        Text("⌥Space")
+                        Text(viewModel.hotkeyDisplayString)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.8))
                     }
