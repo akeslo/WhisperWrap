@@ -17,12 +17,13 @@ struct DictationRecordingView: View {
                 VStack(spacing: 16) {
                     if viewModel.isRecording {
                         HStack(spacing: 8) {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 10, height: 10)
-                                .opacity(Double(Int(Date().timeIntervalSince1970 * 2) % 2 == 0 ? 1 : 0.5)) // Blink
-                                .animation(.default, value: Date())
-                            
+                            TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 10, height: 10)
+                                    .opacity(Int(context.date.timeIntervalSince1970 * 2) % 2 == 0 ? 1 : 0.5) // Blink
+                            }
+
                             Text("Recording...")
                                 .font(.headline)
                                 .foregroundColor(.red)
