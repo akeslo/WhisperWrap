@@ -174,6 +174,10 @@ struct DictationSettingsView: View {
                     }
                 }
 
+                Text("Sends your transcribed text to Anthropic's Claude for processing. This may share sensitive data.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
                 if viewModel.claudeEnabled {
                     Text("A prompt picker appears after each transcription — pick one or it uses your default after \(Int(promptPickerCountdownDuration))s. ⌥⇧V shows the last transcription and AI output.")
                         .font(.caption)
