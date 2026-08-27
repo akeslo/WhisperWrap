@@ -195,14 +195,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Relaunch from new location using a fully detached process
+        // Relaunch from new location using a fully detached process. The old code built the
+        // shell command by interpolating both paths directly into a script string; this passes
+        // them as literal argv elements instead ($1/$2), so a path segment can never be
+        // interpreted as shell syntax (A-SEC-4). Sequencing (sleep, then remove, then open)
+        // still needs a shell — that part is unchanged and not the injection risk.
         logToFile("Move: attempting relaunch from \(destination.path)")
-        let escapedDest = destination.path.replacingOccurrences(of: "'", with: "'\\''")
-        let escapedSource = source.path.replacingOccurrences(of: "'", with: "'\\''")
-        let script = "sleep 1 && rm -rf '\(escapedSource)' && open '\(escapedDest)'"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
-        task.arguments = ["/bin/bash", "-c", script]
+        task.arguments = [
+            "/bin/sh", "-c", "sleep 1 && rm -rf \"$1\" && open \"$2\"", "_",
+            source.path, destination.path,
+        ]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         task.qualityOfService = .background
