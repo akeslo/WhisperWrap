@@ -236,7 +236,7 @@ class ContentViewModel: ObservableObject {
                 let contents = try fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles)
                 for fileURL in contents {
                     let filename = fileURL.lastPathComponent
-                    if filename.hasSuffix(".txt") || filename.hasSuffix(".srt") || filename.hasSuffix(".json") {
+                    if filename.hasSuffix(".txt") || filename.hasSuffix(".srt") || filename.hasSuffix(".json") || filename.hasSuffix(".wav") {
                         if let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
                            let created = attrs[.creationDate] as? Date,
                            Date().timeIntervalSince(created) > 3600 {
