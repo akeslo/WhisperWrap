@@ -118,6 +118,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var recordingTimer: Timer?
     private var meterTimer: Timer?
     private var transcriptionTask: Task<Void, Never>?
+    // Identifies the in-flight transcriptionTask run so its `defer` can tell whether it's
+    // still the current run before clearing shared state (R2). Without this, a task
+    // cancelled by cancelTranscription() still runs its `defer` on the next await/return
+    // and unconditionally clears isProcessing/transcriptionTask and hides the HUD — even
+    // after a cancel-then-immediately-re-record has already started a new task and set
+    // both back to true/non-nil. That orphans the new task: nothing points to it any more,
+    // so a later cancelTranscription() has nothing to cancel, and the HUD gets hidden out
+    // from under active transcription.
+    private var currentTranscriptionID: UUID?
     private var silentMonitor = SilentRecordingMonitor()
     private var silentNotificationPosted = false
     
@@ -718,20 +727,27 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
 
         isProcessing = true
+        let runID = UUID()
+        currentTranscriptionID = runID
 
         transcriptionTask = Task {
             var didShowClaudeResults = false
             defer {
-                self.isProcessing = false
-                self.transcriptionTask = nil
-                if self.showHUD {
-                    Task { @MainActor in
-                        if didShowClaudeResults {
-                            // Show results for 5s then fade out
-                            HUDWindowController.shared.showResultsThenFade(duration: 5.0)
-                        } else {
-                            HUDWindowController.shared.clearStreamingText(animated: false)
-                            HUDWindowController.shared.hide()
+                // Only the still-current run may clear shared state. A stale run whose
+                // task was cancelled and superseded by a newer transcribe() call must not
+                // stomp the new run's isProcessing/transcriptionTask/HUD state (R2).
+                if self.currentTranscriptionID == runID {
+                    self.isProcessing = false
+                    self.transcriptionTask = nil
+                    if self.showHUD {
+                        Task { @MainActor in
+                            if didShowClaudeResults {
+                                // Show results for 5s then fade out
+                                HUDWindowController.shared.showResultsThenFade(duration: 5.0)
+                            } else {
+                                HUDWindowController.shared.clearStreamingText(animated: false)
+                                HUDWindowController.shared.hide()
+                            }
                         }
                     }
                 }
