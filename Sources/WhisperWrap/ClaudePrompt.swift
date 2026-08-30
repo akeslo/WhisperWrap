@@ -103,8 +103,11 @@ class ClaudePromptManager: ObservableObject {
     }
 
     private func persistCustom() {
-        if let data = try? JSONEncoder().encode(prompts) {
+        do {
+            let data = try JSONEncoder().encode(prompts)
             UserDefaults.standard.set(data, forKey: storageKey)
+        } catch {
+            LoggerService.shared.debug("Failed to persist custom Claude prompts: \(error)")
         }
     }
 
