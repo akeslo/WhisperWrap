@@ -1,5 +1,11 @@
 # WhisperWrap — Deferred Findings — 2026-08-23
 
+**Addendum (2026-08-31):** several items named below as deferred/not-reached have since been
+fixed by later autonomous commits — R2, R4 (timeout half), R8/U19 (overwrite half), R9/A-SEC-6,
+A-SEC-3, A-SEC-4, A-SLOP-4 (ClaudePrompt half), A-SLOP-11, and U7. See `REMEDIATION_PLAN.md`
+for the per-item commit hashes; this file's prose below is left as written and is no longer
+fully current.
+
 Everything here is a valid finding from `AUDIT.md`/`QA_REPORT.md`, re-verified against
 current code, that was **not** fixed in this remediation pass. Grouped by reason. Full
 per-item table with IDs/locations/severity is in `REMEDIATION_PLAN.md`; this file adds the

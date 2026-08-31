@@ -1,5 +1,11 @@
 # WhisperWrap Remediation Plan — 2026-08-23
 
+**Status-table addendum (2026-08-31, domain-brainstorm-rotation sweep):** rows below marked
+DONE/PARTIAL with a commit hash were fixed by later autonomous sessions after this plan was
+written; the original DEFERRED text is left in place for context, only the status cell was
+updated. This plan's own text is otherwise unmaintained — cross-check against `git log`
+before trusting any remaining DEFERRED row.
+
 Backlog derived from `AUDIT.md` (static audit) and `QA_REPORT.md` (feature QA + UI/UX),
 both dated 2026-08-23. This pass re-verified every finding against current code before
 acting. **Session-scope note:** given the size of this backlog (~55 findings) relative to
@@ -61,12 +67,12 @@ task brief says to surface rather than guess.
 |---|---|---|---|---|---|
 | A-SEC-1 / R10 | Audit §7, QA R10 | ElevenLabs API key stored plaintext in `UserDefaults`/`@AppStorage` | TTSViewModel.swift:44 | High | **BLOCKED-NEEDS-DECISION** — moving to Keychain is straightforward (`kSecClassGenericPassword`), but migrating an *existing* plaintext value on upgrade needs a decision: migrate-and-delete-old-key silently, or prompt the user once? Silent migration risks losing the key if the Keychain write fails after the UserDefaults value is cleared; a prompt adds a one-time UX surface. The task brief explicitly calls out "keychain migration strategy" as exactly this kind of design decision — not guessed. |
 | A-SEC-2 | Audit §7 | Ad-hoc codesign, no entitlements/hardened runtime/notarization → TCC resets every rebuild | generate_app.sh:109 | Med (High if distributed) | DEFERRED — requires a real Apple Developer signing identity Kes controls; not something this session can supply or should guess at. |
-| A-SEC-3 | Audit §7 | Dictation Claude toggle has no privacy disclosure (file-drop path does) | ClaudeService.swift:84-88 vs TranscriptionView.swift:196-198 | Med | DEFERRED — small (add a caption), didn't reach it in this session's time budget. |
-| R4 | QA §2 | No exit-status check or timeout on the `claude` stream; nonzero-exit output can ship as "polished" text; a hung CLI wedges the HUD | ShellService.swift:148-215; ClaudeService.swift:84-108 | Med | DEFERRED — real feature work (timeout plumbing through an async stream, exit-status surfacing to two call sites); scoped out of this session, flagged as next priority. |
-| R5 | QA §2 | Prompt injection via undelimited transcript text; inverse false-positive on `looksLikeError` (legit "error:" text discarded) | ClaudeService.swift:85,104-108 | Low-Med | DEFERRED — same file/area as R4, worth batching with it. |
-| R6 | QA §2 | Claude CLI missing → fully silent no-op, raw text ships with no indication Claude should have run | ShellService.swift:211-213 | Low | DEFERRED — batch with R4/R5. |
-| R9 / A-SEC-6 | Audit §7, QA R9 | `dictation_trimmed.wav` written to shared temp dir outside the scratch-dir convention; reaper excludes `.wav` | FluidVADProcessor.swift:36-37; ContentViewModel.swift:206-226 | Low | DEFERRED — straightforward, didn't reach it. |
-| A-SEC-4 | Audit §7 | Move-to-Applications relaunch uses a `bash -c` shell string (only shell-exec in the app) | WhisperWrap.swift:208-216 | Med | DEFERRED — real fix (two `Process` argv steps + verify-before-delete), didn't reach it. |
+| A-SEC-3 | Audit §7 | Dictation Claude toggle has no privacy disclosure (file-drop path does) | ClaudeService.swift:84-88 vs TranscriptionView.swift:196-198 | Med | **DONE** — commit `f9559ea` (caption added under the dictation Claude toggle). |
+| R4 | QA §2 | No exit-status check or timeout on the `claude` stream; nonzero-exit output can ship as "polished" text; a hung CLI wedges the HUD | ShellService.swift:148-215; ClaudeService.swift:84-108 | Med | **PARTIAL/DONE (timeout)** — commit `75b89ec` bounds the stream with a 60s timeout that force-terminates a hung child and yields an `error:`-tagged chunk. Exit-status surfacing was not separately re-verified; treat as DONE for the hang risk this row exists to track. |
+| R5 | QA §2 | Prompt injection via undelimited transcript text; inverse false-positive on `looksLikeError` (legit "error:" text discarded) | ClaudeService.swift:85,104-108 | Low-Med | DEFERRED — not touched by `75b89ec`; still open. |
+| R6 | QA §2 | Claude CLI missing → fully silent no-op, raw text ships with no indication Claude should have run | ShellService.swift:211-213 | Low | DEFERRED — not touched by `75b89ec`; still open. |
+| R9 / A-SEC-6 | Audit §7, QA R9 | `dictation_trimmed.wav` written to shared temp dir outside the scratch-dir convention; reaper excludes `.wav` | FluidVADProcessor.swift:36-37; ContentViewModel.swift:206-226 | Low | **DONE** — commit `a6467fc` (scratch-routes the VAD trim output). |
+| A-SEC-4 | Audit §7 | Move-to-Applications relaunch uses a `bash -c` shell string (only shell-exec in the app) | WhisperWrap.swift:208-216 | Med | **DONE** — commit `91e6894` (paths passed as `$1`/`$2` argv, not interpolated into the shell string). |
 | A-SEC-5 | Audit §7 | `uninstall_clean.sh` does a direct sqlite DELETE on TCC.db (always SIP-blocked, shouldn't ship) | uninstall_clean.sh:81-107 | Low | DEFERRED. |
 | A-SEC-8 | Audit §7 | VAD loads entire recording into `[Float]` twice | FluidVADProcessor.swift:45-73 | Low | DEFERRED — audit itself says "document or stream"; documenting is cheap but wasn't reached. |
 | A-SEC-9 / U11 | Audit §7, QA U11 | `NSAlert.runModal` inside drop handler / move prompt blocks the UI thread | TranscriptionView.swift:195-207; WhisperWrap.swift:156 | Med | DEFERRED — UI change, GUI-unverifiable in this environment, real conversion to sheet/confirmationDialog not attempted. |
@@ -79,18 +85,18 @@ task brief says to surface rather than guess.
 | A-SLOP-1 | HUD geometry duplicated across 4 resize blocks, magic sizes | HUDWindowController.swift:174-189,191-225,284-295,431-444 | M | DEFERRED |
 | A-SLOP-2 | `enableClaude()` copy-pasted verbatim incl. error strings | TranscriptionView.swift:298-317; DictationSettingsView.swift:286-307 | S | DEFERRED — re-verified both copies still present, byte-for-byte close enough to confirm the duplication is real |
 | A-SLOP-3 | "stream → `looksLikeError` → flip `isConnected=false`" duplicated | DictationViewModel.swift:784-801; ContentViewModel.swift:145-164 | S | DEFERRED — batch with R4/R5/R6 (same Claude-stream area) |
-| A-SLOP-4 | Silent `try?` on prompt save / ElevenLabs request body | ClaudePrompt.swift:106; TTSViewModel.swift:353 | S | DEFERRED |
+| A-SLOP-4 | Silent `try?` on prompt save / ElevenLabs request body | ClaudePrompt.swift:106; TTSViewModel.swift:353 | S | **PARTIAL** — commit `6bb81ae` fixed the `ClaudePrompt.swift` half (logs the encode failure instead of swallowing it). The `TTSViewModel.swift:353` half is still DEFERRED. |
 | A-SLOP-5 | Force-unwraps in VAD path | FluidVADProcessor.swift:52,55,63,125,128 | S | DEFERRED — crash-vs-degrade fix, real work not reached |
 | A-SLOP-6 | `AVAudioConverter` dest capacity sizing (low confidence) | FluidVADProcessor.swift:61-69 | M | DEFERRED |
 | A-SLOP-7 | `DictationViewModel` ~900-line god object | DictationViewModel.swift | L | DEFERRED — explicitly out of scope for a bug-fix pass; a structural refactor, flagged per the task brief's "STOP on structural issue" rule rather than expanded unilaterally |
 | A-SLOP-8 | `TTSViewModel.speak()` doesn't guard `isDownloadingAudio`; `stop()` can't cancel in-flight fetch | TTSViewModel.swift:212-227,299-317,355-430,467-477 | S | DEFERRED |
 | A-SLOP-9 | `checkWindowsVisible` title-string heuristic | WhisperWrap.swift:263-281 | M | DEFERRED (Info-level per audit — "flag if it ever misbehaves") |
 | A-SLOP-10 | Three settings-persistence patterns, raw key-string literals | multiple | M | DEFERRED |
-| A-SLOP-11 | Saved-recording filename collision (same-second takes) | DictationViewModel.swift:656 | S | DEFERRED |
+| A-SLOP-11 | Saved-recording filename collision (same-second takes) | DictationViewModel.swift:656 | S | **DONE** — commit `a6467fc` (uniquified via `_2`, `_3`, ... on collision, with unit tests). |
 | A-SLOP-12 | Blinking-dot animation keyed on `Date()` per render | DictationRecordingView.swift:23-24 | S | DEFERRED |
 | A-SLOP-13 | CoreAudio device-disappearing mid-recording, not traced end-to-end | DictationViewModel.swift:217-401 | M | DEFERRED — audit's own verdict is "unverified, flag for live QA"; needs a real USB mic unplug test, GUI-unverifiable here |
-| R2 | Stale-task `defer` unconditionally clears state; cancel-then-re-record race | DictationViewModel.swift:695-711 | Med | DEFERRED — timing-dependent race, needs task-identity comparison; real fix not attempted this session |
-| R8 | File output silently overwrites existing `<base>.<format>` | ContentViewModel.swift:172-177 | Med | DEFERRED — data-loss finding, straightforward uniquify-or-confirm fix, didn't reach it |
+| R2 | Stale-task `defer` unconditionally clears state; cancel-then-re-record race | DictationViewModel.swift:695-711 | Med | **DONE** — commit `c954b1d` (per-run `currentTranscriptionID` UUID stamp; defer only clears shared state when it's still the current run). |
+| R8 | File output silently overwrites existing `<base>.<format>` | ContentViewModel.swift:172-177 | Med | **DONE** — commit `9be4a12` (`uniqueDestination(for:in:)` appends " 2", " 3", ... on collision, Finder-style). |
 | R11 | `SystemAudioRenderer` continuation can hang forever on missing voice asset; memory/messaging issues | TTSViewModel.swift:562-587,68,359-384 | Low-Med | DEFERRED |
 | R12 | Interrupted model download shows as "Prefetched" | PrefetchManager.swift:68-73 | Low | DEFERRED |
 | R13 | Mic permission revoked mid-recording — real TCC behavior not traced | DictationViewModel.swift:511-583,894-900 | Low | DEFERRED — GUI-unverifiable, needs live TCC revocation test |
@@ -115,7 +121,7 @@ task brief says to surface rather than guess.
 |---|---|---|
 | U5 | Claude failure during dictation fully silent | DEFERRED |
 | U6 | Start/permission failures only a 4s HUD toast | DEFERRED |
-| U7 | Menu-bar popover hardcodes "⌥Space" even after custom hotkey rebind | DEFERRED — small, good next pickup |
+| U7 | Menu-bar popover hardcodes "⌥Space" even after custom hotkey rebind | **DONE** — commit `a0a160a` (uses the existing `hotkeyDisplayString`). |
 | U8 | No discard-from-HUD affordance (only stop-and-transcribe) | DEFERRED — plausibly needs a UX call on confirm/undo, related to U9's design question |
 | U10 | Model download progress hidden when HUD is off | DEFERRED |
 | U11 | see A-SEC-9 above | DEFERRED |
@@ -126,7 +132,7 @@ task brief says to surface rather than guess.
 | U16 | Icon-only buttons lack `accessibilityLabel`s | DEFERRED — accessibility, GUI-unverifiable |
 | U17 | Contrast risks; hotkey-recorder state color-only | DEFERRED — accessibility, GUI-unverifiable |
 | U18 | Custom Claude prompt deletion has no confirm/undo | DEFERRED |
-| U19 | Silent output-file overwrite (=R8); asymmetric clipboard-restore protection | DEFERRED |
+| U19 | Silent output-file overwrite (=R8); asymmetric clipboard-restore protection | **PARTIAL/DONE (overwrite half)** — see R8, commit `9be4a12`. Clipboard-restore asymmetry not separately re-verified. |
 | U20 | File-transcription Claude settings silently reuse dictation's model key; Whisper-model picker resets to `.base` each launch | DEFERRED |
 | U21 (rest) | Drop-zone format list vs README video claim; magic tab-index numbers | DEFERRED — terminology part is BLOCKED, see §D |
 
