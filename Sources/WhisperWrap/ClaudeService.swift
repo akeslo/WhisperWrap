@@ -84,8 +84,10 @@ class ClaudeService: ObservableObject {
     func process(text: String, prompt: String, model: String = "sonnet") -> AsyncStream<String> {
         let fullPrompt = "\(prompt)\n\n---\n\n\(text)"
         let inputData = fullPrompt.data(using: .utf8)
-        
-        let innerStream = shell.streamCommand(executable: effectiveClaudeExecutable, arguments: ["--print", "--model", model], stdinData: inputData)
+
+        // Bounded so a hung `claude` CLI (auth prompt, stalled network) can't wedge the
+        // dictation/file-transcription HUD forever — see ShellService.streamCommand (R4).
+        let innerStream = shell.streamCommand(executable: effectiveClaudeExecutable, arguments: ["--print", "--model", model], stdinData: inputData, timeout: 60)
 
         return AsyncStream { continuation in
             let task = Task {

@@ -145,7 +145,13 @@ final class ShellService: @unchecked Sendable {
         }
     }
     
-    nonisolated func streamCommand(executable: String, arguments: [String] = [], stdinData: Data? = nil) -> AsyncStream<String> {
+    /// - Parameter timeout: If the child hasn't terminated within this many seconds, it is
+    ///   force-terminated and the stream yields one final chunk containing `"error:"` (so
+    ///   `ClaudeService.looksLikeError` catches it) before finishing. Without this, a `claude`
+    ///   CLI child that hangs (auth prompt, stalled network) never terminates on its own —
+    ///   nothing else in this pipeline calls `process.terminate()` except stream cancellation,
+    ///   so the caller's HUD/UI is left waiting forever (R4).
+    nonisolated func streamCommand(executable: String, arguments: [String] = [], stdinData: Data? = nil, timeout: TimeInterval? = nil) -> AsyncStream<String> {
         AsyncStream { continuation in
             let process = Process()
             let pipe = Pipe()
@@ -156,7 +162,7 @@ final class ShellService: @unchecked Sendable {
             } else {
                 process.standardInput = nil
             }
-            
+
             process.standardOutput = pipe
             process.standardError = pipe
             process.arguments = [executable] + arguments
@@ -164,6 +170,15 @@ final class ShellService: @unchecked Sendable {
             process.environment = ShellService.enrichedEnvironment
 
             let decoder = UTF8StreamDecoder()
+            let timedOut = UncheckedSendableBox(NSLock())
+            var didTimeOut = false
+            func markTimedOut() -> Bool {
+                timedOut.value.lock()
+                defer { timedOut.value.unlock() }
+                if didTimeOut { return false }
+                didTimeOut = true
+                return true
+            }
 
             pipe.fileHandleForReading.readabilityHandler = { fileHandle in
                 let data = fileHandle.availableData
@@ -206,6 +221,17 @@ final class ShellService: @unchecked Sendable {
                         // a long transcript.
                         try? inPipe.fileHandleForWriting.write(contentsOf: data)
                         try? inPipe.fileHandleForWriting.close()
+                    }
+                }
+
+                if let timeout {
+                    let box = UncheckedSendableBox(process)
+                    Task.detached {
+                        try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                        let process = box.value
+                        guard process.isRunning, markTimedOut() else { return }
+                        continuation.yield("error: command timed out after \(Int(timeout))s")
+                        process.terminate()
                     }
                 }
             } catch {

@@ -42,4 +42,34 @@ final class ShellServiceTests: XCTestCase {
         }
         XCTAssertEqual(chunks.joined().trimmingCharacters(in: .whitespacesAndNewlines), "hello")
     }
+
+    /// R4: a child that never terminates (e.g. `claude` stuck on an auth prompt) used to
+    /// wedge the consumer forever — nothing but explicit stream cancellation ever called
+    /// `process.terminate()`. A `timeout` now force-terminates it and surfaces an
+    /// `"error:"`-tagged chunk so `ClaudeService.looksLikeError` catches it.
+    func testStreamCommandTimesOutAHungChild() async {
+        let shell = ShellService()
+        // `sleep 30` never writes to stdout, simulating a hung child.
+        let stream = shell.streamCommand(executable: "sleep", arguments: ["30"], timeout: 0.2)
+
+        var chunks: [String] = []
+        for await chunk in stream {
+            chunks.append(chunk)
+        }
+        let joined = chunks.joined()
+        XCTAssertTrue(joined.lowercased().contains("error:"), "expected a timeout error chunk, got: \(joined)")
+    }
+
+    func testStreamCommandWithoutTimeoutDoesNotSpuriouslyTimeOut() async {
+        let shell = ShellService()
+        let stream = shell.streamCommand(executable: "echo", arguments: ["hello"], timeout: 5)
+
+        var chunks: [String] = []
+        for await chunk in stream {
+            chunks.append(chunk)
+        }
+        let joined = chunks.joined()
+        XCTAssertFalse(joined.lowercased().contains("error:"))
+        XCTAssertEqual(joined.trimmingCharacters(in: .whitespacesAndNewlines), "hello")
+    }
 }
