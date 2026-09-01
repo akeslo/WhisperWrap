@@ -350,7 +350,11 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             ]
         ]
         
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            LoggerService.shared.debug("Failed to encode ElevenLabs request body: \(error)")
+        }
         
         Task {
             do {
