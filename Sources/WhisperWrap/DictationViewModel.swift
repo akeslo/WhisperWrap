@@ -840,6 +840,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                             didShowClaudeResults = showHUD && !streamedResult.isEmpty
                         } else if ClaudeService.looksLikeError(trimmed) {
                             claudeService.isConnected = false
+                        } else {
+                            // Empty stdout with no recognizable error text — e.g. the
+                            // `claude` CLI isn't on PATH, so `env claude ...` fails
+                            // silently to stdout. Ships the raw transcription unchanged,
+                            // but flip isConnected so the UI's Claude-status indicator
+                            // reflects that processing did not actually happen (R6).
+                            LoggerService.shared.debug("Claude processing produced no output — CLI may be missing or misconfigured")
+                            claudeService.isConnected = false
                         }
                     }
                 }

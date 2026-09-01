@@ -164,6 +164,13 @@ class ContentViewModel: ObservableObject {
                         } else if ClaudeService.looksLikeError(trimmed) {
                             claudeService.isConnected = false
                             consoleOutput += "⚠️ Claude processing failed, using raw transcription\n"
+                        } else {
+                            // Empty stdout, no recognizable error text — e.g. the `claude`
+                            // CLI isn't on PATH. Silently shipping the raw transcription
+                            // with no console line is exactly R6 (DEFERRED.md); surface it
+                            // and flip isConnected the same way the error branch does.
+                            claudeService.isConnected = false
+                            consoleOutput += "⚠️ Claude produced no output (CLI missing or misconfigured?), using raw transcription\n"
                         }
                         claudeStreamingOutput = ""
                     }
