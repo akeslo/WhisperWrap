@@ -219,7 +219,13 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         }
         
         if isSpeaking { return }
-        
+
+        // A-SLOP-8: without this guard, pressing speak again while a render/download
+        // is already in flight (isDownloadingAudio == true, isSpeaking still false)
+        // kicked off a second concurrent fetch/render that raced the first to set
+        // audioPlayer/lastAudioData.
+        if isDownloadingAudio { return }
+
         if selectedEngine == .system {
             speakSystem()
         } else {
