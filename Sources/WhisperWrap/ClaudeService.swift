@@ -102,10 +102,22 @@ class ClaudeService: ObservableObject {
         }
     }
 
-    /// Check if output looks like a Claude CLI error rather than valid content
+    /// Check if output looks like a Claude CLI error rather than valid content.
+    ///
+    /// `"error:"` alone is too broad to match anywhere in the output: real transcribed/
+    /// processed text can legitimately contain that literal substring mid-sentence (e.g. a
+    /// dictated debugging note like "then I got error: file not found"), and that content
+    /// would otherwise be discarded as a false-positive CLI error (R5). A genuine CLI error
+    /// line always leads with the marker, so `"error:"` is only checked at the start of a
+    /// line; the other markers are specific enough to stay substring-anywhere checks.
     nonisolated static func looksLikeError(_ output: String) -> Bool {
         let lower = output.lowercased()
-        return lower.contains("error:") || lower.contains("traceback") || lower.contains("fatal:")
-            || lower.contains("not authenticated") || lower.contains("api error")
+        if lower.contains("traceback") || lower.contains("fatal:")
+            || lower.contains("not authenticated") || lower.contains("api error") {
+            return true
+        }
+        return lower
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("error:") }
     }
 }

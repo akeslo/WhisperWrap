@@ -50,4 +50,16 @@ final class ClaudeServiceTests: XCTestCase {
         // "errorless" or a sentence mentioning error without a colon must not trip the check.
         XCTAssertFalse(ClaudeService.looksLikeError("This code has zero error handling gaps."))
     }
+
+    func testDoesNotFlagLegitimateContentThatMentionsErrorColonMidSentence() {
+        // R5: "error:" is only a genuine CLI-error signal at the start of a line. Real
+        // transcribed/processed text can contain the literal substring mid-sentence (e.g. a
+        // dictated debugging note), and that must not be discarded as a false-positive error.
+        XCTAssertFalse(ClaudeService.looksLikeError("Then I got error: file not found, so I restarted."))
+        XCTAssertFalse(ClaudeService.looksLikeError("Action items:\n- mention the error: message to Bob"))
+    }
+
+    func testStillFlagsErrorColonAtStartOfALaterLine() {
+        XCTAssertTrue(ClaudeService.looksLikeError("Processing...\nerror: something broke"))
+    }
 }
