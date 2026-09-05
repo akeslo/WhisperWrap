@@ -332,20 +332,11 @@ struct DictationSettingsView: View {
         isCheckingClaude = true
         Task {
             defer { isCheckingClaude = false }
-
-            // Check CLI availability
-            guard await claudeService.checkAvailability() != nil else {
-                claudeSetupError = "Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code"
-                showClaudeSetupAlert = true
-                return
-            }
-
-            // Verify auth
-            let authed = await claudeService.verifyAuth()
-            if authed {
+            switch await claudeService.verifyClaudeSetup() {
+            case .success:
                 viewModel.claudeEnabled = true
-            } else {
-                claudeSetupError = claudeService.authError ?? "Claude CLI is not authenticated. Run 'claude' in your terminal to log in."
+            case .failure(let message):
+                claudeSetupError = message
                 showClaudeSetupAlert = true
             }
         }

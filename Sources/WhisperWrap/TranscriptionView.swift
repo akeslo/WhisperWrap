@@ -298,18 +298,11 @@ struct TranscriptionView: View {
         isCheckingClaude = true
         Task {
             defer { isCheckingClaude = false }
-
-            guard await claudeService.checkAvailability() != nil else {
-                claudeSetupError = "Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code"
-                showClaudeSetupAlert = true
-                return
-            }
-
-            let authed = await claudeService.verifyAuth()
-            if authed {
+            switch await claudeService.verifyClaudeSetup() {
+            case .success:
                 fileClaudeEnabled = true
-            } else {
-                claudeSetupError = claudeService.authError ?? "Claude CLI is not authenticated. Run 'claude' in your terminal to log in."
+            case .failure(let message):
+                claudeSetupError = message
                 showClaudeSetupAlert = true
             }
         }

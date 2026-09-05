@@ -102,6 +102,27 @@ class ClaudeService: ObservableObject {
         }
     }
 
+    /// Outcome of `verifyClaudeSetup()`.
+    enum SetupOutcome {
+        case success
+        case failure(String)
+    }
+
+    /// Shared "enable Claude" flow: checks CLI availability, then verifies auth.
+    ///
+    /// `TranscriptionView.enableClaude()` and `DictationSettingsView.enableClaude()` used to
+    /// duplicate this check-then-verify sequence (and its error copy) verbatim (A-SLOP-2) —
+    /// each call site now only needs to flip its own "enabled" flag on `.success`.
+    func verifyClaudeSetup() async -> SetupOutcome {
+        guard await checkAvailability() != nil else {
+            return .failure("Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code")
+        }
+        if await verifyAuth() {
+            return .success
+        }
+        return .failure(authError ?? "Claude CLI is not authenticated. Run 'claude' in your terminal to log in.")
+    }
+
     /// Check if output looks like a Claude CLI error rather than valid content.
     ///
     /// `"error:"` alone is too broad to match anywhere in the output: real transcribed/
