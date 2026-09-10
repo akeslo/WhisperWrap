@@ -93,7 +93,7 @@ task brief says to surface rather than guess.
 | A-SLOP-9 | `checkWindowsVisible` title-string heuristic | WhisperWrap.swift:263-281 | M | DEFERRED (Info-level per audit — "flag if it ever misbehaves") |
 | A-SLOP-10 | Three settings-persistence patterns, raw key-string literals | multiple | M | DEFERRED |
 | A-SLOP-11 | Saved-recording filename collision (same-second takes) | DictationViewModel.swift:656 | S | **DONE** — commit `a6467fc` (uniquified via `_2`, `_3`, ... on collision, with unit tests). |
-| A-SLOP-12 | Blinking-dot animation keyed on `Date()` per render | DictationRecordingView.swift:23-24 | S | DEFERRED |
+| A-SLOP-12 | Blinking-dot animation keyed on `Date()` per render | DictationRecordingView.swift:23-24 | S | **DONE** — commit `c28787a` drives the blink off a `TimelineView(.periodic(...))` timer instead of a per-render `Date()` read. |
 | A-SLOP-13 | CoreAudio device-disappearing mid-recording, not traced end-to-end | DictationViewModel.swift:217-401 | M | DEFERRED — audit's own verdict is "unverified, flag for live QA"; needs a real USB mic unplug test, GUI-unverifiable here |
 | R2 | Stale-task `defer` unconditionally clears state; cancel-then-re-record race | DictationViewModel.swift:695-711 | Med | **DONE** — commit `c954b1d` (per-run `currentTranscriptionID` UUID stamp; defer only clears shared state when it's still the current run). |
 | R8 | File output silently overwrites existing `<base>.<format>` | ContentViewModel.swift:172-177 | Med | **DONE** — commit `9be4a12` (`uniqueDestination(for:in:)` appends " 2", " 3", ... on collision, Finder-style). |
