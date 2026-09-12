@@ -68,8 +68,13 @@ final class PrefetchManager: ObservableObject {
     private func check(model: Model) async {
         guard statuses[model] != .fetching else { return }
         let modelDir = modelCacheBase.appendingPathComponent(model.whisperKitModelName)
-        let exists = FileManager.default.fileExists(atPath: modelDir.path)
-        statuses[model] = exists ? .prefetched : .notPrefetched
+        // Mere directory existence doesn't distinguish a completed download from one
+        // interrupted mid-fetch (WhisperKit creates the directory before it's fully
+        // populated) — require at least one non-empty file inside before calling it
+        // prefetched, so an interrupted download reads as notPrefetched instead of
+        // silently masquerading as a finished one (R12).
+        let hasContent = directorySize(at: modelDir) > 0
+        statuses[model] = hasContent ? .prefetched : .notPrefetched
     }
 
     private func fetchSize(for model: Model) async {
