@@ -10,6 +10,16 @@ final class FluidVADProcessor: @unchecked Sendable {
     private static let mergeGapSeconds: TimeInterval = 0.3
     private static let minRegionSeconds: TimeInterval = 0.15
 
+    /// A-SLOP-5: `loadAsPCM`/`writePCM` used to force-unwrap `AVAudioFormat`/`AVAudioPCMBuffer`
+    /// allocation. Those inits *can* return nil (invalid format, huge frame count exhausting
+    /// memory); a nil there force-crashed the whole app instead of reaching `trimSilence`'s
+    /// existing `catch { return nil }` degrade-to-original-audio path. Now they throw this and
+    /// let that path do its job.
+    private enum VADAllocationError: Error {
+        case formatCreationFailed
+        case bufferAllocationFailed
+    }
+
     func trimSilence(audioURL: URL) async -> URL? {
         do {
             let samples = try loadAsPCM(url: audioURL)
@@ -53,22 +63,26 @@ final class FluidVADProcessor: @unchecked Sendable {
 
     private func loadAsPCM(url: URL) throws -> [Float] {
         let audioFile = try AVAudioFile(forReading: url)
-        let format = AVAudioFormat(
+        guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: Double(Self.sampleRate),
             channels: 1,
             interleaved: false
-        )!
+        ) else { throw VADAllocationError.formatCreationFailed }
         let frameCount = AVAudioFrameCount(audioFile.length)
         guard frameCount > 0 else { return [] }
-        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            throw VADAllocationError.bufferAllocationFailed
+        }
         // If the file is already at 16 kHz, read directly; otherwise convert
         if abs(audioFile.processingFormat.sampleRate - Double(Self.sampleRate)) < 1 {
             try audioFile.read(into: buffer)
         } else {
             // Use AVAudioConverter for non-16 kHz files
             let converter = AVAudioConverter(from: audioFile.processingFormat, to: format)
-            let srcBuffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount)!
+            guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
+                throw VADAllocationError.bufferAllocationFailed
+            }
             try audioFile.read(into: srcBuffer)
             var error: NSError?
             converter?.convert(to: buffer, error: &error) { _, outStatus in
@@ -124,17 +138,21 @@ final class FluidVADProcessor: @unchecked Sendable {
     }
 
     private func writePCM(samples: [Float], to url: URL) throws {
-        let format = AVAudioFormat(
+        guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: Double(Self.sampleRate),
             channels: 1,
             interleaved: false
-        )!
+        ) else { throw VADAllocationError.formatCreationFailed }
         let frameCount = AVAudioFrameCount(samples.count)
-        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let channelData = buffer.floatChannelData?[0] else {
+            throw VADAllocationError.bufferAllocationFailed
+        }
         buffer.frameLength = frameCount
         samples.withUnsafeBufferPointer { ptr in
-            buffer.floatChannelData![0].update(from: ptr.baseAddress!, count: samples.count)
+            guard let base = ptr.baseAddress else { return }
+            channelData.update(from: base, count: samples.count)
         }
         let file = try AVAudioFile(forWriting: url, settings: format.settings)
         try file.write(from: buffer)
