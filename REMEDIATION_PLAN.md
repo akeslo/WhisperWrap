@@ -97,7 +97,7 @@ task brief says to surface rather than guess.
 | A-SLOP-13 | CoreAudio device-disappearing mid-recording, not traced end-to-end | DictationViewModel.swift:217-401 | M | DEFERRED — audit's own verdict is "unverified, flag for live QA"; needs a real USB mic unplug test, GUI-unverifiable here |
 | R2 | Stale-task `defer` unconditionally clears state; cancel-then-re-record race | DictationViewModel.swift:695-711 | Med | **DONE** — commit `c954b1d` (per-run `currentTranscriptionID` UUID stamp; defer only clears shared state when it's still the current run). |
 | R8 | File output silently overwrites existing `<base>.<format>` | ContentViewModel.swift:172-177 | Med | **DONE** — commit `9be4a12` (`uniqueDestination(for:in:)` appends " 2", " 3", ... on collision, Finder-style). |
-| R11 | `SystemAudioRenderer` continuation can hang forever on missing voice asset; memory/messaging issues | TTSViewModel.swift:562-587,68,359-384 | Low-Med | DEFERRED |
+| R11 | `SystemAudioRenderer` continuation can hang forever on missing voice asset; memory/messaging issues | TTSViewModel.swift:562-587,68,359-384 | Low-Med | **DONE** — commit pending (rotation sweep 2026-09-13): `renderSystemAudio` races the render against a 20s timeout, same pattern as R4. |
 | R12 | Interrupted model download shows as "Prefetched" | PrefetchManager.swift:68-73 | Low | **DONE** — commit pending (rotation sweep 2026-09-12): `check(model:)` now requires non-empty directory content, not mere existence. |
 | R13 | Mic permission revoked mid-recording — real TCC behavior not traced | DictationViewModel.swift:511-583,894-900 | Low | DEFERRED — GUI-unverifiable, needs live TCC revocation test |
 

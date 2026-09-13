@@ -299,7 +299,22 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     nonisolated private func renderSystemAudio(text: String, voice: AVSpeechSynthesisVoice?, rate: Float) async throws -> Data {
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         let renderer = SystemAudioRenderer()
-        return try await renderer.render(text: text, voice: voice, rate: rate, to: tempURL)
+        // R11: AVSpeechSynthesizer never calls back (no didFinish/didCancel, no write buffer)
+        // when the requested voice's asset is missing, which left the continuation inside
+        // SystemAudioRenderer.render(...) unresumed forever and hung the caller task. Bound
+        // it with a race-to-timeout, same pattern already used for the Claude CLI stream (R4).
+        return try await withThrowingTaskGroup(of: Data.self) { group in
+            group.addTask {
+                try await renderer.render(text: text, voice: voice, rate: rate, to: tempURL)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 20_000_000_000)
+                throw NSError(domain: "SystemAudioRenderer", code: -3, userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for speech synthesis (missing voice asset?)"])
+            }
+            defer { group.cancelAll() }
+            let result = try await group.next()!
+            return result
+        }
     }
     
     private func speakElevenLabs() {
