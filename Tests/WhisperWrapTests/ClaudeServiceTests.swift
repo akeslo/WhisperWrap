@@ -62,4 +62,21 @@ final class ClaudeServiceTests: XCTestCase {
     func testStillFlagsErrorColonAtStartOfALaterLine() {
         XCTAssertTrue(ClaudeService.looksLikeError("Processing...\nerror: something broke"))
     }
+
+    // MARK: - classifyOutcome (A-SLOP-3: shared three-way branch)
+
+    func testClassifyOutcomeReturnsSuccessForUsableText() {
+        XCTAssertEqual(
+            ClaudeService.classifyOutcome("Here is the polished version."),
+            .success("Here is the polished version.")
+        )
+    }
+
+    func testClassifyOutcomeReturnsErrorForCLIError() {
+        XCTAssertEqual(ClaudeService.classifyOutcome("fatal: not authenticated"), .error)
+    }
+
+    func testClassifyOutcomeReturnsEmptyOutputForBlankTrimmedResult() {
+        XCTAssertEqual(ClaudeService.classifyOutcome(""), .emptyOutput)
+    }
 }

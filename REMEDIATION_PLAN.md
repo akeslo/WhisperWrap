@@ -84,7 +84,7 @@ task brief says to surface rather than guess.
 |---|---|---|---|---|
 | A-SLOP-1 | HUD geometry duplicated across 4 resize blocks, magic sizes | HUDWindowController.swift:174-189,191-225,284-295,431-444 | M | DEFERRED |
 | A-SLOP-2 | `enableClaude()` copy-pasted verbatim incl. error strings | TranscriptionView.swift:298-317; DictationSettingsView.swift:286-307 | S | DEFERRED — re-verified both copies still present, byte-for-byte close enough to confirm the duplication is real |
-| A-SLOP-3 | "stream → `looksLikeError` → flip `isConnected=false`" duplicated | DictationViewModel.swift:784-801; ContentViewModel.swift:145-164 | S | DEFERRED — batch with R4/R5/R6 (same Claude-stream area) |
+| A-SLOP-3 | "stream → `looksLikeError` → flip `isConnected=false`" duplicated | DictationViewModel.swift:784-801; ContentViewModel.swift:145-164 | S | **DONE** — commit pending (rotation sweep 2026-09-18): extracted the shared three-way branch into `ClaudeService.classifyOutcome(_:)`; both call sites switch on it, keeping only their own side effects (HUD update vs. file write + console line) local. |
 | A-SLOP-4 | Silent `try?` on prompt save / ElevenLabs request body | ClaudePrompt.swift:106; TTSViewModel.swift:353 | S | **DONE** — commit `6bb81ae` fixed the `ClaudePrompt.swift` half, and commit `d2f8a93` fixed the `TTSViewModel.swift:353` half (both now log the encode failure instead of swallowing it). |
 | A-SLOP-5 | Force-unwraps in VAD path | FluidVADProcessor.swift:52,55,63,125,128 | S | DEFERRED — crash-vs-degrade fix, real work not reached |
 | A-SLOP-6 | `AVAudioConverter` dest capacity sizing (low confidence) | FluidVADProcessor.swift:61-69 | M | DEFERRED |

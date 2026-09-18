@@ -835,12 +835,13 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                         }
 
                         let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
-                            text = trimmed
+                        switch ClaudeService.classifyOutcome(trimmed) {
+                        case .success(let processed):
+                            text = processed
                             didShowClaudeResults = showHUD && !streamedResult.isEmpty
-                        } else if ClaudeService.looksLikeError(trimmed) {
+                        case .error:
                             claudeService.isConnected = false
-                        } else {
+                        case .emptyOutput:
                             // Empty stdout with no recognizable error text — e.g. the
                             // `claude` CLI isn't on PATH, so `env claude ...` fails
                             // silently to stdout. Ships the raw transcription unchanged,

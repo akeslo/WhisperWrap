@@ -141,4 +141,34 @@ class ClaudeService: ObservableObject {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("error:") }
     }
+
+    /// Classifies a trimmed Claude CLI stream result into one of three outcomes.
+    ///
+    /// This is the single source of truth for the three-way branch (usable text / CLI
+    /// error / silent no-op) that DictationViewModel and ContentViewModel each used to
+    /// duplicate independently (A-SLOP-3, REMEDIATION_PLAN.md). Both call sites had
+    /// different side effects (HUD update vs. file write + console line) that stay at
+    /// the call site, but the classification itself — which determined whether
+    /// `isConnected` got flipped — is exactly the kind of logic that silently drifts
+    /// when copy-pasted twice; extracting it here means a future fix only has one place
+    /// to land.
+    enum ProcessingOutcome: Equatable {
+        /// Non-empty output that doesn't look like a CLI error.
+        case success(String)
+        /// Output that looks like a Claude CLI error (`looksLikeError`).
+        case error
+        /// Empty stdout with no recognizable error text — e.g. `claude` isn't on PATH
+        /// and the shell silently produced nothing (R6, DEFERRED.md).
+        case emptyOutput
+    }
+
+    nonisolated static func classifyOutcome(_ trimmed: String) -> ProcessingOutcome {
+        if !trimmed.isEmpty && !looksLikeError(trimmed) {
+            return .success(trimmed)
+        } else if looksLikeError(trimmed) {
+            return .error
+        } else {
+            return .emptyOutput
+        }
+    }
 }

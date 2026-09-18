@@ -158,13 +158,14 @@ class ContentViewModel: ObservableObject {
                         }
 
                         let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty && !ClaudeService.looksLikeError(trimmed) {
-                            try trimmed.write(to: tempOutputURL, atomically: true, encoding: .utf8)
+                        switch ClaudeService.classifyOutcome(trimmed) {
+                        case .success(let processed):
+                            try processed.write(to: tempOutputURL, atomically: true, encoding: .utf8)
                             consoleOutput += "✅ Claude processing complete\n"
-                        } else if ClaudeService.looksLikeError(trimmed) {
+                        case .error:
                             claudeService.isConnected = false
                             consoleOutput += "⚠️ Claude processing failed, using raw transcription\n"
-                        } else {
+                        case .emptyOutput:
                             // Empty stdout, no recognizable error text — e.g. the `claude`
                             // CLI isn't on PATH. Silently shipping the raw transcription
                             // with no console line is exactly R6 (DEFERRED.md); surface it
