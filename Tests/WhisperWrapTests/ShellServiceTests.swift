@@ -72,4 +72,66 @@ final class ShellServiceTests: XCTestCase {
         XCTAssertFalse(joined.lowercased().contains("error:"))
         XCTAssertEqual(joined.trimmingCharacters(in: .whitespacesAndNewlines), "hello")
     }
+
+    // MARK: - UTF8StreamDecoder split-multibyte carry (via streamCommand)
+    //
+    // UTF8StreamDecoder is `private` to ShellService.swift, so it can't be driven
+    // directly even with @testable import. These tests exercise it through
+    // streamCommand's readabilityHandler instead: a child process that writes a
+    // multibyte UTF-8 character's bytes across two (or three) separate writes,
+    // with a sleep between them, forces the pipe to deliver them as separate
+    // `availableData` reads — reproducing exactly the split-read scenario the
+    // decoder's carry buffer exists to handle. Without it, each partial read
+    // would fail `String(data:encoding:.utf8)` and either drop or mangle the
+    // character.
+
+    /// € (U+20AC) is 3 bytes (0xE2 0x82 0xAC). Split 1 byte / 2 bytes.
+    func testStreamCommandReassemblesA3ByteCharacterSplitAcrossTwoReads() async {
+        let shell = ShellService()
+        let stream = shell.streamCommand(
+            executable: "sh",
+            arguments: ["-c", "printf '\\xe2'; sleep 0.2; printf '\\x82\\xac'"]
+        )
+
+        var chunks: [String] = []
+        for await chunk in stream {
+            chunks.append(chunk)
+        }
+        XCTAssertEqual(chunks.joined(), "\u{20AC}")
+    }
+
+    /// 🎉 (U+1F389) is 4 bytes (0xF0 0x9F 0x8E 0x89). Split 1 / 1 / 2 across
+    /// three reads, exercising the decoder's up-to-3-trailing-byte backoff.
+    func testStreamCommandReassemblesA4ByteCharacterSplitAcrossThreeReads() async {
+        let shell = ShellService()
+        let stream = shell.streamCommand(
+            executable: "sh",
+            arguments: [
+                "-c",
+                "printf '\\xf0'; sleep 0.2; printf '\\x9f'; sleep 0.2; printf '\\x8e\\x89'"
+            ]
+        )
+
+        var chunks: [String] = []
+        for await chunk in stream {
+            chunks.append(chunk)
+        }
+        XCTAssertEqual(chunks.joined(), "\u{1F389}")
+    }
+
+    /// A multibyte character surrounded by plain ASCII, still split mid-character,
+    /// must not lose or corrupt the surrounding text.
+    func testStreamCommandReassemblesASplitCharacterAmidPlainText() async {
+        let shell = ShellService()
+        let stream = shell.streamCommand(
+            executable: "sh",
+            arguments: ["-c", "printf 'cost: \\xe2'; sleep 0.2; printf '\\x82\\xac done'"]
+        )
+
+        var chunks: [String] = []
+        for await chunk in stream {
+            chunks.append(chunk)
+        }
+        XCTAssertEqual(chunks.joined(), "cost: \u{20AC} done")
+    }
 }
