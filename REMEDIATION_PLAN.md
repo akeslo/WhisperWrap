@@ -108,7 +108,7 @@ task brief says to surface rather than guess.
 | A-TEST-3 (part) | WhisperTranscriptionEngine SRT/JSON formatting untested | **DONE as part of R7** — `WhisperTranscriptionEngineTests` now covers txt/srt/json formatting via the extracted pure `format(segments:as:)` |
 | A-TEST-3 (part) | WhisperTranscriptionEngine model-load dedup race untested | DEFERRED — the race lives in `prepareModel`, still untested |
 | A-TEST-5 (part) | HotKeyManager had no test file at all | **DONE as part of R3** — `HotKeyManagerTests` added, covers the out-of-range guard specifically, not full coverage of the class |
-| A-TEST-1 | `SilentRecordingMonitor` — pure state machine, zero tests | DEFERRED — audit flags this "highest ROI"; didn't reach it |
+| A-TEST-1 | `SilentRecordingMonitor` — pure state machine, zero tests | **DONE** — `SilentRecordingMonitorTests` added, commit `a55e116` |
 | A-TEST-2 | `UTF8StreamDecoder` split-multibyte carry logic untested | DEFERRED |
 | A-TEST-4 | HUD prompt-selection continuation handling untested | DEFERRED — large effort per audit |
 | A-TEST-5 (rest) | `TTSViewModel`, `PrefetchManager`, `PermissionsManager`, `AppDelegate` — no test files | DEFERRED |
@@ -133,7 +133,7 @@ task brief says to surface rather than guess.
 | U17 | Contrast risks; hotkey-recorder state color-only | DEFERRED — accessibility, GUI-unverifiable |
 | U18 | Custom Claude prompt deletion has no confirm/undo | DEFERRED |
 | U19 | Silent output-file overwrite (=R8); asymmetric clipboard-restore protection | **PARTIAL/DONE (overwrite half)** — see R8, commit `9be4a12`. Clipboard-restore asymmetry not separately re-verified. |
-| U20 | File-transcription Claude settings silently reuse dictation's model key; Whisper-model picker resets to `.base` each launch | DEFERRED |
+| U20 | File-transcription Claude settings silently reuse dictation's model key; Whisper-model picker resets to `.base` each launch | **DONE** — persisted via `@AppStorage("fileTranscriptionModel")`, commit `b16f983` |
 | U21 (rest) | Drop-zone format list vs README video claim; magic tab-index numbers | DEFERRED — terminology part is BLOCKED, see §D |
 
 ## Discovered during this session (not in either source report)
