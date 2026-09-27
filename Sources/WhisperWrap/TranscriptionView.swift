@@ -9,7 +9,9 @@ struct TranscriptionView: View {
     @ObservedObject var claudePromptManager: ClaudePromptManager
     @Binding var fileClaudeEnabled: Bool
     @Binding var fileClaudePromptID: UUID?
-    @State private var selectedModel: Model = .base
+    // Persisted so the file-transcription model choice survives app restarts (U20) —
+    // previously a plain @State that silently reset to .base every launch.
+    @AppStorage("fileTranscriptionModel") private var selectedModel: Model = .base
     @State private var selectedFormat: String = "txt"
     @State private var isTargeted: Bool = false
     @State private var droppedFileName: String?
