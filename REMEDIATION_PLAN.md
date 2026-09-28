@@ -109,7 +109,7 @@ task brief says to surface rather than guess.
 | A-TEST-3 (part) | WhisperTranscriptionEngine model-load dedup race untested | DEFERRED — the race lives in `prepareModel`, still untested |
 | A-TEST-5 (part) | HotKeyManager had no test file at all | **DONE as part of R3** — `HotKeyManagerTests` added, covers the out-of-range guard specifically, not full coverage of the class |
 | A-TEST-1 | `SilentRecordingMonitor` — pure state machine, zero tests | **DONE** — `SilentRecordingMonitorTests` added, commit `a55e116` |
-| A-TEST-2 | `UTF8StreamDecoder` split-multibyte carry logic untested | DEFERRED |
+| A-TEST-2 | `UTF8StreamDecoder` split-multibyte carry logic untested | **DONE** — `ShellServiceTests.swift` covers the split-multibyte carry buffer via `streamCommand`, commit `84d7f42` |
 | A-TEST-4 | HUD prompt-selection continuation handling untested | DEFERRED — large effort per audit |
 | A-TEST-5 (rest) | `TTSViewModel`, `PrefetchManager`, `PermissionsManager`, `AppDelegate` — no test files | DEFERRED |
 | A-TEST-6 | MenuBar/AppDelegate `asyncAfter` window-policy timing untested | DEFERRED |
