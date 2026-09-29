@@ -4,6 +4,19 @@ import Combine
 import AppKit
 #endif
 
+/// Tab selection for ContentView's TabView. Previously the same raw Int values were
+/// duplicated between ContentView's `.tag()` calls and MenuBarView's `requestedTab`
+/// assignments with no compiler tie between them — reordering a tab in one file silently
+/// broke navigation from the menu bar in the other (QA_REPORT.md U21, ContentView.swift,
+/// MenuBarView.swift). A named enum makes the two sides refer to the same source of truth.
+enum WhisperWrapTab: Int {
+    case transcribe = 0
+    case models = 1
+    case diagnostics = 2
+    case tts = 3
+    case dictation = 4
+}
+
 @MainActor
 class ContentViewModel: ObservableObject {
     // No more whisperInstalled / isInstalling / isCheckingEnv
@@ -12,7 +25,7 @@ class ContentViewModel: ObservableObject {
     @Published var isProcessing: Bool = false
     @Published var processingStage: String = ""
     @Published var processingProgress: Double = 0.0
-    @Published var requestedTab: Int? = nil
+    @Published var requestedTab: WhisperWrapTab? = nil
 
     // Claude Processing Settings (file transcription)
     @Published var fileClaudeEnabled: Bool = false {

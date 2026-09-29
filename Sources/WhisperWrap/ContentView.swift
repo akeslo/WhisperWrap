@@ -11,7 +11,7 @@ struct ContentView: View {
 
     @StateObject private var prefetch = PrefetchManager()
     @StateObject private var ttsViewModel = TTSViewModel()
-    @State private var selectedTab = 4
+    @State private var selectedTab: WhisperWrapTab = .dictation
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -22,7 +22,7 @@ struct ContentView: View {
                 .tabItem {
                     Label("Dictation", systemImage: "mic.fill")
                 }
-                .tag(4)
+                .tag(WhisperWrapTab.dictation)
 
             TranscriptionView(
                 consoleOutput: $viewModel.consoleOutput,
@@ -43,20 +43,20 @@ struct ContentView: View {
             .tabItem {
                 Label("Transcribe", systemImage: "waveform")
             }
-            .tag(0)
+            .tag(WhisperWrapTab.transcribe)
 
             TTSView(viewModel: ttsViewModel)
                 .tabItem {
                     Label("Text to Speech", systemImage: "bubble.left.and.exclamationmark.bubble.right.fill")
                 }
-                .tag(3)
+                .tag(WhisperWrapTab.tts)
 
             PrefetchModelsView()
                 .environmentObject(prefetch)
                 .tabItem {
                     Label("Models", systemImage: "server.rack")
                 }
-                .tag(1)
+                .tag(WhisperWrapTab.models)
 
             DiagnosticsView()
                 .environmentObject(viewModel)
@@ -64,7 +64,7 @@ struct ContentView: View {
                 .tabItem {
                     Label("Diagnostics", systemImage: "wrench")
                 }
-                .tag(2)
+                .tag(WhisperWrapTab.diagnostics)
         }
         .onChange(of: viewModel.requestedTab) { _, newTab in
             if let tab = newTab {

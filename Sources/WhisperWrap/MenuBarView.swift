@@ -62,7 +62,7 @@ struct MenuBarView: View {
                 // Show Last Transcription
                 if !viewModel.isRecording && !viewModel.transcribedText.isEmpty {
                     Button(action: {
-                        contentViewModel.requestedTab = 4 // Dictation tab
+                        contentViewModel.requestedTab = .dictation
                         openMainApp()
                     }) {
                         HStack {
@@ -81,7 +81,7 @@ struct MenuBarView: View {
                 
                 // TTS Button
                 Button(action: {
-                    contentViewModel.requestedTab = 3 // TTS tab
+                    contentViewModel.requestedTab = .tts
                     openMainApp()
                 }) {
                     HStack {
@@ -99,7 +99,7 @@ struct MenuBarView: View {
                 
                 // Audio to Text Button
                 Button(action: {
-                    contentViewModel.requestedTab = 0 // Transcribe tab
+                    contentViewModel.requestedTab = .transcribe
                     openMainApp()
                 }) {
                     HStack {
