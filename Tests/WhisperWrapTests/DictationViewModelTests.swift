@@ -401,3 +401,19 @@ final class UniqueRecordingURLTests: XCTestCase {
         XCTAssertEqual(url.lastPathComponent, "recording_2026-08-24_09-00-00_4.wav")
     }
 }
+
+// MARK: - recordingPreflightFailure (no input device: say "no microphone", not a generic failure)
+
+final class RecordingPreflightTests: XCTestCase {
+    func testNoInputDevices_ReturnsNoMicrophoneMessage() {
+        XCTAssertEqual(
+            DictationViewModel.recordingPreflightFailure(inputDeviceCount: 0),
+            DictationViewModel.noMicrophoneMessage
+        )
+    }
+
+    func testInputDevicePresent_AllowsRecording() {
+        XCTAssertNil(DictationViewModel.recordingPreflightFailure(inputDeviceCount: 1))
+        XCTAssertNil(DictationViewModel.recordingPreflightFailure(inputDeviceCount: 3))
+    }
+}

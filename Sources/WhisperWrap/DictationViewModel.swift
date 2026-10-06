@@ -538,6 +538,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             return
         }
 
+        // The device list is otherwise only refreshed at launch and app activation, and
+        // a menu-bar app is rarely "activated": a mic that connected or vanished since
+        // (AirPods switching to the phone, a reboot) would leave a stale list behind.
+        loadAudioDevices()
+        if let message = Self.recordingPreflightFailure(inputDeviceCount: availableAudioDevices.count) {
+            presentRecordingFailure(message)
+            return
+        }
+
         // Set the selected audio input device
         if let deviceID = selectedAudioDeviceID {
             setDefaultInputDevice(deviceID)
@@ -599,6 +608,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         } catch {
             presentRecordingFailure("Couldn't start recording: \(error.localizedDescription)")
         }
+    }
+
+    nonisolated static let noMicrophoneMessage = "No microphone found. Connect your AirPods or a mic (check Sound settings) and try again."
+
+    /// Pure pre-record check: with zero input devices AVAudioRecorder.record() just
+    /// returns false, which used to surface only the generic "Couldn't start recording"
+    /// text and gave no hint that the Mac had no mic at all.
+    nonisolated static func recordingPreflightFailure(inputDeviceCount: Int) -> String? {
+        inputDeviceCount == 0 ? noMicrophoneMessage : nil
     }
 
     /// Surface a recording-start failure to the user. Without this the hotkey press
