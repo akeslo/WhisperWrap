@@ -33,6 +33,50 @@ struct ElevenLabsErrorResponse: Codable {
     let detail: ElevenLabsErrorDetail
 }
 
+/// Generic-password Keychain storage for API keys, scoped to this device.
+@MainActor
+enum KeychainSecret {
+    static let service = "com.whisperwrap"
+
+    private static func query(_ account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: account]
+    }
+
+    static func get(account: String) -> String? {
+        var q = query(account)
+        q[kSecReturnData as String] = true
+        var out: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
+              let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Empty value deletes the item.
+    static func set(_ value: String, account: String) {
+        SecItemDelete(query(account) as CFDictionary)
+        guard !value.isEmpty else { return }
+        var q = query(account)
+        q[kSecValueData as String] = Data(value.utf8)
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(q as CFDictionary, nil)
+        if status != errSecSuccess {
+            LoggerService.shared.debug("Keychain write failed for \(account): \(status)")
+        }
+    }
+
+    /// Reads the Keychain value, first moving any legacy plaintext UserDefaults value
+    /// stored under the same key into the Keychain and deleting it from defaults.
+    static func loadMigrating(account: String, defaults: UserDefaults = .standard) -> String {
+        if let legacy = defaults.string(forKey: account) {
+            if !legacy.isEmpty { set(legacy, account: account) }
+            defaults.removeObject(forKey: account)
+        }
+        return get(account: account) ?? ""
+    }
+}
+
 @MainActor
 class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate {
     @Published var text: String = ""
@@ -41,7 +85,9 @@ class TTSViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     @Published var contentSource: String? = nil
     
     // Engine & API Key
-    @AppStorage("elevenLabsAPIKey") var apiKey: String = ""
+    @Published var apiKey: String = KeychainSecret.loadMigrating(account: "elevenLabsAPIKey") {
+        didSet { KeychainSecret.set(apiKey, account: "elevenLabsAPIKey") }
+    }
     @Published var selectedEngine: TTSEngine = .system
     
     // System Voice & Rate

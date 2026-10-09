@@ -192,7 +192,7 @@ final class ShellService: @unchecked Sendable {
                 }
             }
 
-            process.terminationHandler = { _ in
+            process.terminationHandler = { process in
                 // Stop handler first, then drain any remaining data
                 pipe.fileHandleForReading.readabilityHandler = nil
                 let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -201,6 +201,12 @@ final class ShellService: @unchecked Sendable {
                 }
                 if let tail = decoder.flush() {
                     continuation.yield(tail)
+                }
+                // A failing child's stdout/stderr is error text, not a result. The
+                // `error:` line makes ClaudeService.classifyOutcome return .error so the
+                // raw transcript ships. A timeout kill is .uncaughtSignal and already yielded one.
+                if process.terminationStatus != 0, process.terminationReason == .exit {
+                    continuation.yield("\nerror: command exited with status \(process.terminationStatus)")
                 }
                 continuation.finish()
             }

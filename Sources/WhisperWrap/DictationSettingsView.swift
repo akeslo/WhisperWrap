@@ -19,6 +19,18 @@ struct DictationSettingsView: View {
         GroupBox(label: Label("Settings", systemImage: "gear")) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
+                    Text("Engine")
+                        .frame(width: 100, alignment: .leading)
+                    Picker("", selection: $viewModel.dictationEngine) {
+                        ForEach(DictationEngine.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                    Spacer()
+                }
+
+                HStack {
                     Text("Model")
                         .frame(width: 100, alignment: .leading)
                     Picker("", selection: $viewModel.selectedModel) {
@@ -28,6 +40,7 @@ struct DictationSettingsView: View {
                     }
                     .labelsHidden()
                     .frame(width: 200)
+                    .disabled(viewModel.dictationEngine == .parakeet)
 
                     Spacer()
 
@@ -70,6 +83,8 @@ struct DictationSettingsView: View {
 
                 HStack {
                     Toggle("Auto Copy", isOn: $viewModel.autoCopy)
+                    Toggle("Auto Paste", isOn: $viewModel.autoPaste)
+                        .help("Pastes into the frontmost app (needs Accessibility). Restores your clipboard unless Auto Copy is on.")
                     Toggle("Show HUD", isOn: $viewModel.showHUD)
 
                     if viewModel.showHUD {

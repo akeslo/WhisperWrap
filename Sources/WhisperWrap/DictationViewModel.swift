@@ -24,11 +24,23 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var selectedModel: Model = .base {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedModel")
+            prewarmModel()
+        }
+    }
+    @Published var dictationEngine: DictationEngine = .whisper {
+        didSet {
+            UserDefaults.standard.set(dictationEngine.rawValue, forKey: "dictationEngine")
+            prewarmModel()
         }
     }
     @Published var autoCopy: Bool = true {
         didSet {
             UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
+        }
+    }
+    @Published var autoPaste: Bool = false {
+        didSet {
+            UserDefaults.standard.set(autoPaste, forKey: "autoPaste")
         }
     }
     @Published var showHUD: Bool {
@@ -127,6 +139,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     // so a later cancelTranscription() has nothing to cancel, and the HUD gets hidden out
     // from under active transcription.
     private var currentTranscriptionID: UUID?
+    private var stopRequestedAt: Date?
     private var silentMonitor = SilentRecordingMonitor()
     private var silentNotificationPosted = false
     
@@ -134,6 +147,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
         self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
         self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
+        self.autoPaste = UserDefaults.standard.bool(forKey: "autoPaste")
+        self.dictationEngine = UserDefaults.standard.string(forKey: "dictationEngine")
+            .flatMap(DictationEngine.init(rawValue:)) ?? .whisper
 
         if let savedModelRaw = UserDefaults.standard.string(forKey: "selectedModel"),
            let savedModel = Model(rawValue: savedModelRaw) {
@@ -642,6 +658,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // recorder delegate failure). Without this guard the HUD flips back to
         // .transcribing and transcription re-runs against an already-deleted temp file.
         guard isRecording else { return }
+        stopRequestedAt = Date()
         audioRecorder?.stop()
         isRecording = false
         stopMonitoring()
@@ -714,6 +731,58 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         return candidate
     }
 
+    /// Loads the dictation model in the background so the first take after launch or a
+    /// model switch doesn't pay download/load inside the stop-to-clipboard path.
+    func prewarmModel() {
+        guard let cvm = contentViewModel else { return }
+        if dictationEngine == .parakeet {
+            Task { _ = try? await cvm.parakeetEngine.prepare() }
+        } else {
+            let model = selectedModel
+            Task { try? await cvm.transcriptionEngine.prepareModel(model) }
+        }
+    }
+
+    /// Pastes `text` into the frontmost app via a synthesized Cmd-V. Unless the user also
+    /// wants it copied, the text is marked transient (clipboard managers skip it) and the
+    /// prior clipboard is restored after 300ms. Needs Accessibility; silently no-ops without it.
+    static func paste(_ text: String, keepOnClipboard: Bool) {
+        guard AXIsProcessTrusted() else {
+            LoggerService.shared.debug("Auto-paste skipped — Accessibility not granted")
+            return
+        }
+        let pb = NSPasteboard.general
+        let saved: [NSPasteboardItem] = keepOnClipboard ? [] : (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        if !keepOnClipboard {
+            pb.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        }
+        let ourChange = pb.changeCount
+
+        let src = CGEventSource(stateID: .combinedSessionState)
+        let vKey = CGKeyCode(kVK_ANSI_V)
+        for down in [true, false] {
+            let e = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: down)
+            e?.flags = .maskCommand
+            e?.post(tap: .cghidEventTap)
+        }
+
+        guard !keepOnClipboard else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            // Someone else wrote the clipboard in the meantime; theirs wins.
+            guard pb.changeCount == ourChange else { return }
+            pb.clearContents()
+            if !saved.isEmpty { pb.writeObjects(saved) }
+        }
+    }
+
     func cancelRecording() {
         audioRecorder?.stop()
         audioRecorder?.deleteRecording()
@@ -775,7 +844,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 // Show download/load progress in HUD if model not yet ready
                 let engine = contentViewModel.transcriptionEngine
                 var hudProgressTask: Task<Void, Never>? = nil
-                if !engine.isReady && self.showHUD {
+                if dictationEngine == .whisper && !engine.isReady && self.showHUD {
                     hudProgressTask = Task { @MainActor in
                         while !Task.isCancelled && !engine.isReady {
                             let progress = engine.downloadProgress
@@ -799,8 +868,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     if didTrim { try? FileManager.default.removeItem(at: processedURL) }
                 }
 
-                LoggerService.shared.debug("Transcribing with model: \(selectedModel.rawValue)\(didTrim ? " (VAD trimmed silence)" : "")")
-                var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel)
+                let modelName = dictationEngine == .parakeet ? "parakeet-tdt-0.6b-v3" : selectedModel.rawValue
+                LoggerService.shared.debug("Transcribing with model: \(modelName)\(didTrim ? " (VAD trimmed silence)" : "")")
+                var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel, engine: dictationEngine)
                 LoggerService.shared.debug("Transcription complete — \(text.split(separator: " ").count) words")
 
                 // Check if cancelled before continuing
@@ -881,6 +951,12 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if autoCopy && text != ContentViewModel.noSpeechDetectedSentinel {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
+                }
+                if autoPaste && text != ContentViewModel.noSpeechDetectedSentinel {
+                    Self.paste(text, keepOnClipboard: autoCopy)
+                }
+                if let stopAt = self.stopRequestedAt {
+                    LoggerService.shared.debug("Stop-to-clipboard: \(Int(Date().timeIntervalSince(stopAt) * 1000))ms")
                 }
 
             } catch is CancellationError {

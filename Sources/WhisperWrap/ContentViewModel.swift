@@ -74,8 +74,12 @@ class ContentViewModel: ObservableObject {
         processAudio(fileURL: url, model: model, format: format, useClaude: useClaude)
     }
 
-    func transcribeDictation(audioURL: URL, model: Model) async throws -> String {
-        let text = try await transcriptionEngine.transcribeToText(audioURL: audioURL, model: model, onProgress: nil)
+    let parakeetEngine = ParakeetEngine()
+
+    func transcribeDictation(audioURL: URL, model: Model, engine: DictationEngine = .whisper) async throws -> String {
+        let text = engine == .parakeet
+            ? try await parakeetEngine.transcribe(audioURL: audioURL)
+            : try await transcriptionEngine.transcribeToText(audioURL: audioURL, model: model, onProgress: nil)
         try? FileManager.default.removeItem(at: audioURL)
 
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
