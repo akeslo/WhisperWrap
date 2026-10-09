@@ -70,6 +70,8 @@ struct DictationSettingsView: View {
 
                 HStack {
                     Toggle("Auto Copy", isOn: $viewModel.autoCopy)
+                    Toggle("Auto Paste", isOn: $viewModel.autoPaste)
+                        .help("Pastes into the frontmost app (needs Accessibility). Restores your clipboard unless Auto Copy is on.")
                     Toggle("Show HUD", isOn: $viewModel.showHUD)
 
                     if viewModel.showHUD {

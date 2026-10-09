@@ -32,6 +32,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
         }
     }
+    @Published var autoPaste: Bool = false {
+        didSet {
+            UserDefaults.standard.set(autoPaste, forKey: "autoPaste")
+        }
+    }
     @Published var showHUD: Bool {
         didSet {
             UserDefaults.standard.set(showHUD, forKey: "showHUD")
@@ -136,6 +141,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
         self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
         self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
+        self.autoPaste = UserDefaults.standard.bool(forKey: "autoPaste")
 
         if let savedModelRaw = UserDefaults.standard.string(forKey: "selectedModel"),
            let savedModel = Model(rawValue: savedModelRaw) {
@@ -725,6 +731,46 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         Task { try? await engine.prepareModel(model) }
     }
 
+    /// Pastes `text` into the frontmost app via a synthesized Cmd-V. Unless the user also
+    /// wants it copied, the text is marked transient (clipboard managers skip it) and the
+    /// prior clipboard is restored after 300ms. Needs Accessibility; silently no-ops without it.
+    static func paste(_ text: String, keepOnClipboard: Bool) {
+        guard AXIsProcessTrusted() else {
+            LoggerService.shared.debug("Auto-paste skipped — Accessibility not granted")
+            return
+        }
+        let pb = NSPasteboard.general
+        let saved: [NSPasteboardItem] = keepOnClipboard ? [] : (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        if !keepOnClipboard {
+            pb.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        }
+        let ourChange = pb.changeCount
+
+        let src = CGEventSource(stateID: .combinedSessionState)
+        let vKey = CGKeyCode(kVK_ANSI_V)
+        for down in [true, false] {
+            let e = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: down)
+            e?.flags = .maskCommand
+            e?.post(tap: .cghidEventTap)
+        }
+
+        guard !keepOnClipboard else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            // Someone else wrote the clipboard in the meantime; theirs wins.
+            guard pb.changeCount == ourChange else { return }
+            pb.clearContents()
+            if !saved.isEmpty { pb.writeObjects(saved) }
+        }
+    }
+
     func cancelRecording() {
         audioRecorder?.stop()
         audioRecorder?.deleteRecording()
@@ -892,6 +938,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if autoCopy && text != ContentViewModel.noSpeechDetectedSentinel {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
+                }
+                if autoPaste && text != ContentViewModel.noSpeechDetectedSentinel {
+                    Self.paste(text, keepOnClipboard: autoCopy)
                 }
                 if let stopAt = self.stopRequestedAt {
                     LoggerService.shared.debug("Stop-to-clipboard: \(Int(Date().timeIntervalSince(stopAt) * 1000))ms")
