@@ -1,0 +1,305 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T00:05:00-05:00",
+  "title": "Design System: WhisperWrap",
+  "extensions": {
+    "colorMeta": {
+      "graphite-ground": {
+        "role": "neutral",
+        "displayName": "Graphite Ground",
+        "canonical": "oklch(21.1% 0.005 219.7)",
+        "tonalRamp": [
+          "#090c0d",
+          "#16191a",
+          "#222627",
+          "#3f4344",
+          "#5e6263",
+          "#7f8384",
+          "#a2a6a7",
+          "#c6cacb"
+        ]
+      },
+      "graphite-raised": {
+        "role": "neutral",
+        "displayName": "Graphite Raised",
+        "canonical": "oklch(30.3% 0.009 173.7)",
+        "tonalRamp": [
+          "#070c0b",
+          "#212725",
+          "#2a302e",
+          "#3d4441",
+          "#5c6361",
+          "#7d8482",
+          "#a0a7a4",
+          "#c3cbc8"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "rgba(255,255,255,0.08)"
+      },
+      "bone": {
+        "role": "neutral",
+        "displayName": "Bone",
+        "canonical": "oklch(94.0% 0.006 137.8)",
+        "tonalRamp": [
+          "#242623",
+          "#404340",
+          "#5f625f",
+          "#808380",
+          "#a3a6a2",
+          "#c7cac6",
+          "#e9ece8",
+          "#ecefeb"
+        ]
+      },
+      "bone-dim": {
+        "role": "neutral",
+        "displayName": "Bone Dim",
+        "canonical": "rgba(233,236,232,0.62)"
+      },
+      "tally-tx": {
+        "role": "primary",
+        "displayName": "TX Red",
+        "canonical": "oklch(62.3% 0.196 28.7)",
+        "tonalRamp": [
+          "#3e0000",
+          "#660000",
+          "#8e0000",
+          "#b60e0c",
+          "#e5483b",
+          "#ff6a59",
+          "#ff907d",
+          "#ffb6a1"
+        ]
+      },
+      "tally-amber": {
+        "role": "secondary",
+        "displayName": "Decode Amber",
+        "canonical": "oklch(77.6% 0.148 69.4)",
+        "tonalRamp": [
+          "#4e0300",
+          "#712a00",
+          "#944c00",
+          "#b96e00",
+          "#df9221",
+          "#f2a33a",
+          "#ffb651",
+          "#ffdc78"
+        ]
+      },
+      "tally-landed": {
+        "role": "tertiary",
+        "displayName": "Landed Green",
+        "canonical": "oklch(74.2% 0.132 157.4)",
+        "tonalRamp": [
+          "#003504",
+          "#005523",
+          "#007642",
+          "#249962",
+          "#51be84",
+          "#58c48a",
+          "#78e3a7",
+          "#9effcc"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "One per sidebar destination."
+      },
+      "status": {
+        "displayName": "Status",
+        "purpose": "Live tally label on the Dictate page; drop-zone prompt."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel titles, HUD state word, menu bar status."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Labels, transcripts, previews (12px in the menu bar panel)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "HUD subtitle, captions, hints."
+      },
+      "keycap": {
+        "displayName": "Keycap",
+        "purpose": "Hotkey display only (10px inside the Refine pill)."
+      },
+      "numerals": {
+        "displayName": "Numerals",
+        "purpose": "Every measurement, amber, 11-13px."
+      }
+    },
+    "shadows": [
+      {
+        "name": "hud-float",
+        "value": "0 4px 20px rgba(0,0,0,0.35)",
+        "purpose": "HUD capsule/pill over other apps (SwiftUI radius 10, y 4); window shadow disabled."
+      },
+      {
+        "name": "tally-glow",
+        "value": "0 1px 6px <tally color at 60%>",
+        "purpose": "LED light bleed on every TallyLight (SwiftUI radius 3, y 1)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "hud-morph",
+        "value": "0.28s window frame animation + .snappy(duration: 0.28)",
+        "purpose": "Capsule to Refine pill resize and status change."
+      },
+      {
+        "name": "hud-content-transition",
+        "value": "opacity + scale 0.96 (capsule) / 0.9 (pill)",
+        "purpose": "Crossfade between HUD shapes."
+      },
+      {
+        "name": "hud-hide",
+        "value": "0.25s alpha fade",
+        "purpose": "HUD dismissal."
+      },
+      {
+        "name": "tally-pulse",
+        "value": "easeInOut 0.7s, repeatForever autoreverse, opacity 1 to 0.35",
+        "purpose": "In-progress tally states."
+      },
+      {
+        "name": "meter",
+        "value": "easeOut 0.1s",
+        "purpose": "Level-meter segment changes."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sidebar",
+        "value": "160-220px (ideal 180)"
+      },
+      {
+        "name": "page-content-max",
+        "value": "720px"
+      },
+      {
+        "name": "menubar-panel",
+        "value": "300px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "HUD Capsule (listening)",
+      "kind": "custom",
+      "refersTo": "hud-capsule",
+      "description": "Floating top-center recording HUD: red tally, state word, level meter, amber elapsed time, mic menu, close.",
+      "html": "<div class=\"ds-hud\"><span class=\"ds-tally ds-tally-tx ds-pulse\"></span><div class=\"ds-hud-text\"><div class=\"ds-hud-title\">Listening</div><div class=\"ds-hud-sub\">MacBook Pro Microphone</div></div><div class=\"ds-meter\"><i class=\"on\" style=\"height:6px\"></i><i class=\"on\" style=\"height:8px\"></i><i class=\"on\" style=\"height:10px\"></i><i style=\"height:12px\"></i><i style=\"height:14px\"></i></div><span class=\"ds-num\">0:07</span><button class=\"ds-glyph\" aria-label=\"Switch microphone\"><svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"><rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5 11a7 7 0 0 0 14 0M12 18v3\"/></svg></button><button class=\"ds-glyph\" aria-label=\"Cancel recording\"><svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\"><path d=\"M6 6l12 12M18 6 6 18\"/></svg></button></div>",
+      "css": ".ds-hud{font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;display:flex;align-items:center;gap:10px;width:340px;height:44px;box-sizing:border-box;padding:0 14px;background:#16191a;border:1px solid rgba(255,255,255,0.08);border-radius:999px;box-shadow:0 4px 20px rgba(0,0,0,.35);color:#e9ece8} .ds-hud-text{flex:1;min-width:0} .ds-hud-title{font-size:13px;font-weight:600} .ds-hud-sub{font-size:11px;color:rgba(233,236,232,0.62);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ds-tally{width:8px;height:8px;border-radius:50%;flex:none} .ds-tally-tx{background:#e5483b;box-shadow:0 1px 6px rgba(229,72,59,.6)} .ds-pulse{animation:ds-breathe 1.4s ease-in-out infinite} @keyframes ds-breathe{50%{opacity:.35}} .ds-meter{display:flex;align-items:flex-end;gap:2px;height:14px} .ds-meter i{width:3px;border-radius:1px;background:#2a302e} .ds-meter i.on{background:#e5483b} .ds-num{font-family:'SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:11px;font-weight:500;color:#f2a33a} .ds-glyph{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;background:none;color:rgba(233,236,232,0.62);cursor:pointer;border-radius:4px} .ds-glyph:hover{color:#e9ece8} .ds-glyph:focus-visible{outline:2px solid #e9ece8;outline-offset:1px}"
+    },
+    {
+      "name": "Refine Pill",
+      "kind": "custom",
+      "refersTo": "hud-refine-pill",
+      "description": "The capsule after paste: one-click Refine with the default prompt, chevron for other prompts. Shown 6s.",
+      "html": "<div class=\"ds-pill\"><button class=\"ds-pill-main\"><span class=\"ds-wand\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"><path d=\"M4 20 15 9\"/><path d=\"M15 4v3M18.5 5.5l-2 2M20 9h-3\"/></svg></span><span class=\"ds-pill-label\">Refine</span><span class=\"ds-pill-key\">⌥⌘R</span></button><span class=\"ds-pill-sep\"></span><button class=\"ds-pill-chev\" aria-label=\"Refine with another prompt\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"/></svg></button></div>",
+      "css": ".ds-pill{font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;display:flex;align-items:center;width:176px;height:32px;box-sizing:border-box;background:#16191a;border:1px solid rgba(255,255,255,0.08);border-radius:999px;box-shadow:0 4px 20px rgba(0,0,0,.35);overflow:hidden} .ds-pill-main{flex:1;display:flex;align-items:center;gap:6px;height:100%;padding:0 6px 0 12px;border:0;background:none;color:#e9ece8;cursor:pointer} .ds-pill-main:hover{background:#2a302e} .ds-pill-main:focus-visible,.ds-pill-chev:focus-visible{outline:2px solid #e9ece8;outline-offset:-2px} .ds-wand{color:#f2a33a;display:flex} .ds-pill-label{font-size:12px;font-weight:600} .ds-pill-key{font-family:ui-rounded,'SF Pro Rounded',system-ui;font-size:10px;font-weight:500;color:rgba(233,236,232,0.62)} .ds-pill-sep{width:1px;height:16px;background:rgba(255,255,255,0.08)} .ds-pill-chev{display:grid;place-items:center;height:100%;padding:0 10px;border:0;background:none;color:rgba(233,236,232,0.62);cursor:pointer} .ds-pill-chev:hover{color:#e9ece8}"
+    },
+    {
+      "name": "Panel with Setting Rows",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Grouped main-window section: title above a raised plate of label-left, control-right rows.",
+      "html": "<section class=\"ds-panel\"><h3 class=\"ds-panel-title\">Diagnostics</h3><div class=\"ds-panel-plate\"><div class=\"ds-row\"><div><div class=\"ds-row-label\">Version</div></div><span class=\"ds-num\">1.4 (212)</span></div><div class=\"ds-row\"><div><div class=\"ds-row-label\">Auto paste</div><div class=\"ds-row-hint\">Paste into the focused app after transcription</div></div><input type=\"checkbox\" class=\"ds-switch\" checked></div></div></section>",
+      "css": ".ds-panel{font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;width:420px;color:#e9ece8} .ds-panel-title{font-size:13px;font-weight:600;margin:0 0 8px} .ds-panel-plate{display:flex;flex-direction:column;gap:12px;padding:14px;background:#2a302e;border:1px solid rgba(255,255,255,0.08);border-radius:10px} .ds-row{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:13px} .ds-row-hint{font-size:11px;color:rgba(233,236,232,0.62);margin-top:2px} .ds-num{font-family:'SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:12px;font-weight:500;color:#f2a33a} .ds-switch{accent-color:#e9ece8} .ds-switch:focus-visible{outline:2px solid #e9ece8;outline-offset:2px}"
+    },
+    {
+      "name": "KeyCap",
+      "kind": "chip",
+      "refersTo": "keycap",
+      "description": "Read-only shortcut display; becomes the hotkey recorder when clicked in settings.",
+      "html": "<span class=\"ds-keycap\">⌥⇧V</span> <button class=\"ds-keycap ds-keycap-rec\">Press new keys…</button>",
+      "css": ".ds-keycap{font-family:ui-rounded,'SF Pro Rounded',system-ui;display:inline-block;font-size:12px;font-weight:500;color:#e9ece8;padding:4px 8px;background:#16191a;border:1px solid rgba(255,255,255,0.08);border-radius:5px} button.ds-keycap{cursor:pointer} .ds-keycap-rec{border-color:rgba(233,236,232,.6)} button.ds-keycap:focus-visible{outline:2px solid #e9ece8;outline-offset:2px}"
+    },
+    {
+      "name": "Tally Light",
+      "kind": "custom",
+      "refersTo": "tally-light",
+      "description": "8px state LED with glow; pulses while in progress, steady when keyed or landed. Always beside a state word.",
+      "html": "<div class=\"ds-tallies\"><span><i class=\"ds-led ds-led-tx\"></i>Recording</span><span><i class=\"ds-led ds-led-amber ds-pulse\"></i>Decoding</span><span><i class=\"ds-led ds-led-landed\"></i>Pasted</span></div>",
+      "css": ".ds-tallies{font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;display:flex;gap:20px;font-size:13px;font-weight:600;color:#e9ece8} .ds-tallies span{display:flex;align-items:center;gap:8px} .ds-led{width:8px;height:8px;border-radius:50%} .ds-led-tx{background:#e5483b;box-shadow:0 1px 6px rgba(229,72,59,.6)} .ds-led-amber{background:#f2a33a;box-shadow:0 1px 6px rgba(242,163,58,.6)} .ds-led-landed{background:#58c48a;box-shadow:0 1px 6px rgba(88,196,138,.6)} .ds-pulse{animation:ds-breathe 1.4s ease-in-out infinite} @keyframes ds-breathe{50%{opacity:.35}}"
+    },
+    {
+      "name": "Key Button",
+      "kind": "button",
+      "refersTo": "button-key",
+      "description": "The one control tinted TX red: the menu bar's full-width Start/Stop Dictation.",
+      "html": "<button class=\"ds-btn-key\"><svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"><rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5 11a7 7 0 0 0 14 0M12 18v3\"/></svg><span>Start Dictation</span></button>",
+      "css": ".ds-btn-key{font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;width:276px;height:28px;border:0;border-radius:6px;background:#e5483b;color:#fff;font-size:13px;font-weight:500;cursor:pointer} .ds-btn-key:hover{background:#d43e32} .ds-btn-key:active{background:#b8352b} .ds-btn-key:focus-visible{outline:3px solid rgba(233,236,232,.5);outline-offset:1px}"
+    },
+    {
+      "name": "Bordered Button",
+      "kind": "button",
+      "refersTo": "panel",
+      "description": "Native bordered button, bone-tinted; every non-keying action.",
+      "html": "<button class=\"ds-btn\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"><path d=\"M4 20 15 9\"/><path d=\"M15 4v3M18.5 5.5l-2 2M20 9h-3\"/></svg><span>Refine Last</span></button>",
+      "css": ".ds-btn{font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border:1px solid rgba(255,255,255,0.08);border-radius:6px;background:#3a403e;color:#e9ece8;font-size:13px;cursor:pointer} .ds-btn:hover{background:#454c49} .ds-btn:focus-visible{outline:3px solid rgba(233,236,232,.4);outline-offset:1px} .ds-btn:disabled{opacity:.4;cursor:default}"
+    },
+    {
+      "name": "Inset Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Prompt editor / log well: graphite-ground inset on a Panel, monospaced text.",
+      "html": "<textarea class=\"ds-field\" rows=\"4\">Fix grammar and punctuation. Return only the corrected text.</textarea>",
+      "css": ".ds-field{font-family:'SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;width:360px;padding:6px;background:#16191a;color:#e9ece8;border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:12px;resize:vertical} .ds-field:focus-visible{outline:none;border-color:rgba(233,236,232,.6)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Push-to-Talk Readback",
+    "overview": "**Creative North Star: \"Push-to-Talk Readback\"**\n\nWhisperWrap behaves like a radio operator's console reduced to its signals: a dark graphite shell, bone-colored type, and three tally lights that say what the microphone is doing. Key up and the light goes red; release and it goes amber while the words decode; it turns green once they have landed in the focused app. Refine is the readback: the same message, corrected and pasted back over the raw text.\n\nThe system is quiet and dense in the way native macOS utilities are dense. Every control is a stock SwiftUI/AppKit control (buttons, toggles, pickers, menus, the `NavigationSplitView` sidebar) tinted bone instead of system blue, sitting on opaque graphite plates. Color appears only when it carries state or a measurement. The world is held to palette, tally, and numerals so it never becomes a radio costume: no faux hardware, no textures, no dials.",
+    "keyCharacteristics": [
+      "Opaque graphite ground with one raised plate tone and a white hairline; dark scheme forced everywhere.",
+      "Three tally colors (red, amber, green) as the only chroma, each bound to a dictation state.",
+      "Amber monospaced numerals for every measurement (elapsed time, percent, sizes, rates, counts).",
+      "One floating HUD shape that shrinks from a recording capsule into a Refine pill.",
+      "Native controls and SF Symbols throughout; the accent tint is bone, not blue."
+    ],
+    "rules": [
+      {
+        "name": "The Tally Rule",
+        "body": "Red, amber, and green carry state only: red is keyed (or failed), amber is working, green is landed. If an element is not reporting dictation, decode, refine, download, or health state, it gets no tally color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Bone Tint Rule",
+        "body": "The app's accent is bone (`.tint(Theme.text)`), so native controls stay neutral; system blue never appears.",
+        "section": "colors"
+      },
+      {
+        "name": "The Readout Rule",
+        "body": "Numbers that measure something (duration, latency, percent, size, rate, count, version) are set in `Theme.numerals` and colored amber. Prose never uses the monospaced face; log text and prompt editors use monospaced in bone or bone-dim, not amber.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Window Rule",
+        "body": "Inside the app's own windows, separation comes from ground/raised tone and the hairline. Shadows belong to the floating HUD and to lit LEDs only.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do route every state color through `Theme.tx`, `Theme.amber`, `Theme.landed`, and pair it with a `TallyLight` and a state word.",
+      "Do set measurements in `Theme.numerals` amber.",
+      "Do build new main-window sections from `Page`, `Panel`, and `SettingRow`, with native controls on the right.",
+      "Do outline every plate, field, and keycap with the 1px hairline.",
+      "Do keep the HUD at one fixed height per state, top-center, focus-free."
+    ],
+    "donts": [
+      "Don't use tally colors for decoration, icons that are not reporting state, or emphasis.",
+      "Don't introduce system blue or a second accent; the tint is bone.",
+      "Don't make the HUD translucent or vibrant; it is opaque graphite with its own soft shadow.",
+      "Don't add shadows inside the main window or menu bar panel.",
+      "Don't add hardware costume (knobs, grilles, textures, faux LEDs beyond `TallyLight`)."
+    ]
+  }
+}
