@@ -6,6 +6,8 @@ import WhisperKit
 final class PrefetchManager: ObservableObject {
     @Published var statuses: [Model: Status] = [:]
     @Published var sizes: [Model: String] = [:]
+    @Published var progress: [Model: Double] = [:]
+    private var downloadTasks: [Model: Task<Void, Never>] = [:]
 
     enum Status: Equatable {
         case notPrefetched
@@ -29,15 +31,27 @@ final class PrefetchManager: ObservableObject {
     func prefetch(_ model: Model) {
         guard statuses[model] != .fetching else { return }
         statuses[model] = .fetching
-        Task {
+        progress[model] = 0
+        downloadTasks[model] = Task {
+            defer { downloadTasks[model] = nil; progress[model] = nil }
             do {
-                _ = try await WhisperKit.download(variant: model.whisperKitModelName)
+                _ = try await WhisperKit.download(variant: model.whisperKitModelName) { p in
+                    let fraction = p.fractionCompleted
+                    Task { @MainActor in self.progress[model] = fraction }
+                }
+                try Task.checkCancellation()
                 statuses[model] = .prefetched
                 await fetchSize(for: model)
+            } catch is CancellationError {
+                statuses[model] = .notPrefetched
             } catch {
-                statuses[model] = .failed(error.localizedDescription)
+                statuses[model] = Task.isCancelled ? .notPrefetched : .failed(error.localizedDescription)
             }
         }
+    }
+
+    func cancelPrefetch(_ model: Model) {
+        downloadTasks[model]?.cancel()
     }
 
     func refresh() {

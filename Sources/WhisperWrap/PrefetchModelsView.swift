@@ -20,7 +20,10 @@ struct PrefetchModelsView: View {
                         Button("Download") { prefetch.prefetch(model) }
                     case .fetching:
                         TallyLight(color: Theme.amber, pulsing: true)
-                        Text("Downloading").foregroundStyle(Theme.textDim)
+                        Text("Downloading \(Int((prefetch.progress[model] ?? 0) * 100))%")
+                            .font(Theme.numerals(11))
+                            .foregroundStyle(Theme.textDim)
+                        Button("Cancel") { prefetch.cancelPrefetch(model) }
                     case .prefetched:
                         TallyLight(color: Theme.landed)
                         Text("Ready").foregroundStyle(Theme.textDim)
