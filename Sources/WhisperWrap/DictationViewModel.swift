@@ -27,6 +27,12 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             prewarmModel()
         }
     }
+    @Published var dictationEngine: DictationEngine = .whisper {
+        didSet {
+            UserDefaults.standard.set(dictationEngine.rawValue, forKey: "dictationEngine")
+            prewarmModel()
+        }
+    }
     @Published var autoCopy: Bool = true {
         didSet {
             UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
@@ -142,6 +148,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
         self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
         self.autoPaste = UserDefaults.standard.bool(forKey: "autoPaste")
+        self.dictationEngine = UserDefaults.standard.string(forKey: "dictationEngine")
+            .flatMap(DictationEngine.init(rawValue:)) ?? .whisper
 
         if let savedModelRaw = UserDefaults.standard.string(forKey: "selectedModel"),
            let savedModel = Model(rawValue: savedModelRaw) {
@@ -726,9 +734,13 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Loads the dictation model in the background so the first take after launch or a
     /// model switch doesn't pay download/load inside the stop-to-clipboard path.
     func prewarmModel() {
-        guard let engine = contentViewModel?.transcriptionEngine else { return }
-        let model = selectedModel
-        Task { try? await engine.prepareModel(model) }
+        guard let cvm = contentViewModel else { return }
+        if dictationEngine == .parakeet {
+            Task { _ = try? await cvm.parakeetEngine.prepare() }
+        } else {
+            let model = selectedModel
+            Task { try? await cvm.transcriptionEngine.prepareModel(model) }
+        }
     }
 
     /// Pastes `text` into the frontmost app via a synthesized Cmd-V. Unless the user also
@@ -832,7 +844,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 // Show download/load progress in HUD if model not yet ready
                 let engine = contentViewModel.transcriptionEngine
                 var hudProgressTask: Task<Void, Never>? = nil
-                if !engine.isReady && self.showHUD {
+                if dictationEngine == .whisper && !engine.isReady && self.showHUD {
                     hudProgressTask = Task { @MainActor in
                         while !Task.isCancelled && !engine.isReady {
                             let progress = engine.downloadProgress
@@ -856,8 +868,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     if didTrim { try? FileManager.default.removeItem(at: processedURL) }
                 }
 
-                LoggerService.shared.debug("Transcribing with model: \(selectedModel.rawValue)\(didTrim ? " (VAD trimmed silence)" : "")")
-                var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel)
+                let modelName = dictationEngine == .parakeet ? "parakeet-tdt-0.6b-v3" : selectedModel.rawValue
+                LoggerService.shared.debug("Transcribing with model: \(modelName)\(didTrim ? " (VAD trimmed silence)" : "")")
+                var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel, engine: dictationEngine)
                 LoggerService.shared.debug("Transcription complete — \(text.split(separator: " ").count) words")
 
                 // Check if cancelled before continuing
