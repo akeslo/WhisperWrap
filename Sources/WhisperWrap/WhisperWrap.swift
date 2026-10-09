@@ -54,6 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dictationViewModel.claudePromptManager = claudePromptManager
         contentViewModel.claudeService = claudeService
         contentViewModel.claudePromptManager = claudePromptManager
+        dictationViewModel.prewarmModel()
 
         // Notification setup — UNUserNotificationCenter requires a proper .app bundle;
         // skip when running via `swift run` (no bundle ID).

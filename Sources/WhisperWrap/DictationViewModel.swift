@@ -24,6 +24,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var selectedModel: Model = .base {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedModel")
+            prewarmModel()
         }
     }
     @Published var autoCopy: Bool = true {
@@ -127,6 +128,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     // so a later cancelTranscription() has nothing to cancel, and the HUD gets hidden out
     // from under active transcription.
     private var currentTranscriptionID: UUID?
+    private var stopRequestedAt: Date?
     private var silentMonitor = SilentRecordingMonitor()
     private var silentNotificationPosted = false
     
@@ -642,6 +644,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // recorder delegate failure). Without this guard the HUD flips back to
         // .transcribing and transcription re-runs against an already-deleted temp file.
         guard isRecording else { return }
+        stopRequestedAt = Date()
         audioRecorder?.stop()
         isRecording = false
         stopMonitoring()
@@ -712,6 +715,14 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             suffix += 1
         }
         return candidate
+    }
+
+    /// Loads the dictation model in the background so the first take after launch or a
+    /// model switch doesn't pay download/load inside the stop-to-clipboard path.
+    func prewarmModel() {
+        guard let engine = contentViewModel?.transcriptionEngine else { return }
+        let model = selectedModel
+        Task { try? await engine.prepareModel(model) }
     }
 
     func cancelRecording() {
@@ -881,6 +892,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if autoCopy && text != ContentViewModel.noSpeechDetectedSentinel {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
+                }
+                if let stopAt = self.stopRequestedAt {
+                    LoggerService.shared.debug("Stop-to-clipboard: \(Int(Date().timeIntervalSince(stopAt) * 1000))ms")
                 }
 
             } catch is CancellationError {
