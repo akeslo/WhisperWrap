@@ -115,6 +115,7 @@ struct PromptsView: View {
     @ObservedObject var claudePromptManager: ClaudePromptManager
 
     @State private var selectedID: UUID?
+    @State private var confirmingDelete = false
     @State private var draft = ""
     @State private var newName = ""
     @State private var newText = ""
@@ -170,9 +171,21 @@ struct PromptsView: View {
                             .disabled(claudePromptManager.builtinOverrides[prompt.id.uuidString] == nil)
                         } else {
                             Button("Delete Prompt", role: .destructive) {
-                                claudePromptManager.deleteCustomPrompt(prompt)
-                                selectedID = nil
-                                draft = ""
+                                confirmingDelete = true
+                            }
+                            .confirmationDialog(
+                                "Delete \"\(prompt.name)\"?",
+                                isPresented: $confirmingDelete,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Delete", role: .destructive) {
+                                    claudePromptManager.deleteCustomPrompt(prompt)
+                                    selectedID = nil
+                                    draft = ""
+                                }
+                                Button("Cancel", role: .cancel) {}
+                            } message: {
+                                Text("This custom prompt will be permanently removed.")
                             }
                         }
                         Spacer()
