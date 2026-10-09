@@ -135,3 +135,15 @@ final class ShellServiceTests: XCTestCase {
         XCTAssertEqual(chunks.joined(), "cost: \u{20AC} done")
     }
 }
+
+final class ShellServiceExitStatusTests: XCTestCase {
+    func testNonzeroExitYieldsErrorSoRawTranscriptShips() async {
+        let stream = ShellService().streamCommand(executable: "sh", arguments: ["-c", "echo partial; exit 3"])
+        var out = ""
+        for await chunk in stream { out += chunk }
+        XCTAssertTrue(out.contains("error: command exited with status 3"))
+        guard case .error = ClaudeService.classifyOutcome(out.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return XCTFail("expected .error, got \(out)")
+        }
+    }
+}
