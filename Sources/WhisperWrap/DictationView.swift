@@ -1,22 +1,15 @@
 import SwiftUI
-import ServiceManagement
 
 struct DictationView: View {
     @EnvironmentObject var viewModel: DictationViewModel
     @EnvironmentObject var contentViewModel: ContentViewModel
-    @EnvironmentObject var claudeService: ClaudeService
     @EnvironmentObject var claudePromptManager: ClaudePromptManager
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                DictationSettingsView(viewModel: viewModel, claudeService: claudeService, claudePromptManager: claudePromptManager)
-                DictationRecordingView(viewModel: viewModel)
-            }
-            .padding(.vertical, 8)
+        Page(title: "Dictate", lede: "Hotkey, speak, and it's pasted. ⌥⌘R refines it in place.") {
+            DictationRecordingView(viewModel: viewModel)
+            DictationSettingsView(viewModel: viewModel, claudePromptManager: claudePromptManager)
         }
-        .onAppear {
-            viewModel.contentViewModel = contentViewModel
-        }
+        .onAppear { viewModel.contentViewModel = contentViewModel }
     }
 }

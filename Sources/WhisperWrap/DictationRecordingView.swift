@@ -1,83 +1,108 @@
 import SwiftUI
 
+/// Live status, start/stop, and the last take with its refined readback.
 struct DictationRecordingView: View {
     @ObservedObject var viewModel: DictationViewModel
-    
+
     var body: some View {
-        VStack(spacing: 20) {
-            // MARK: - Status & Waveform
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
-                
-                VStack(spacing: 16) {
-                    if viewModel.isRecording {
-                        HStack(spacing: 8) {
-                            TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 10, height: 10)
-                                    .opacity(Int(context.date.timeIntervalSince1970 * 2) % 2 == 0 ? 1 : 0.5) // Blink
-                            }
-
-                            Text("Recording...")
-                                .font(.headline)
-                                .foregroundColor(.red)
-                        }
-                        
-                        // Simulated Waveform Visualizer
-                        HStack(spacing: 4) {
-                            ForEach(0..<20) { index in
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.accentColor)
-                                    .frame(width: 4, height: 10 + (CGFloat(viewModel.audioLevel) * CGFloat.random(in: 10...40)))
-                                    .animation(.easeInOut(duration: 0.1), value: viewModel.audioLevel)
-                            }
-                        }
-                        .frame(height: 60)
-                        
-                    } else if viewModel.isProcessing {
-                        ProgressView("Processing with Whisper...")
-                    } else {
-                        Text(viewModel.transcribedText.isEmpty ? "Tap Record to Start" : "Ready")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding()
-            }
-            .frame(height: 100)
-            
-            // MARK: - Controls
-            HStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 14) {
+                TallyLight(color: tally.color, pulsing: tally.pulsing)
+                Text(tally.label)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.text)
                 if viewModel.isRecording {
-                    Button(action: { viewModel.cancelRecording() }) {
-                        Text("Cancel")
-                            .frame(minWidth: 80)
-                    }
-                    .buttonStyle(.bordered)
+                    LevelMeter(level: viewModel.audioLevel)
+                }
+                Spacer()
+                controls
+            }
+            .padding(14)
+            .background(Theme.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
 
-                    Button(action: { viewModel.stopRecording() }) {
-                        Text("Stop Recording")
-                            .frame(minWidth: 120)
+            Panel(title: "Last dictation") {
+                TakeText(title: "Raw", text: viewModel.lastRawTranscription, empty: "Nothing dictated yet. Press \(viewModel.hotkeyDisplayString) and speak.")
+                if !viewModel.lastProcessedOutput.isEmpty {
+                    Divider().overlay(Theme.hairline)
+                    TakeText(title: "Refined", text: viewModel.lastProcessedOutput, empty: "")
+                }
+                HStack {
+                    Spacer()
+                    Button {
+                        Task { await viewModel.refineLast() }
+                    } label: {
+                        Label(viewModel.isRefining ? "Refining…" : "Refine Last", systemImage: "wand.and.stars")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                } else {
-                    Button(action: { viewModel.startRecording() }) {
-                        Label("Start Recording", systemImage: "mic.fill")
-                            .font(.title3)
-                            .padding()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.isProcessing)
+                    .disabled(viewModel.lastRawTranscription.isEmpty || viewModel.isRefining || viewModel.isRecording)
                 }
             }
-            .padding(.bottom, 16)
         }
-        .padding()
+    }
+
+    private var tally: (color: Color, pulsing: Bool, label: String) {
+        if viewModel.isRecording { return (Theme.tx, true, "Recording") }
+        if viewModel.isProcessing { return (Theme.amber, true, "Decoding") }
+        if viewModel.isRefining { return (Theme.amber, true, "Refining") }
+        if !viewModel.lastRawTranscription.isEmpty { return (Theme.landed, false, "Pasted") }
+        return (Theme.textDim, false, "Ready")
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        if viewModel.isRecording {
+            Button("Cancel") { viewModel.cancelRecording() }
+            Button("Stop Dictation") { viewModel.stopRecording() }
+                .keyboardShortcut(.defaultAction)
+        } else {
+            Button {
+                viewModel.startRecording()
+            } label: {
+                Label("Start Dictation", systemImage: "mic.fill")
+            }
+            .disabled(viewModel.isProcessing)
+        }
+    }
+}
+
+/// Input level as a short bar row; driven by the real audio level, not random noise.
+private struct LevelMeter: View {
+    let level: Float
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<12, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Float(i) / 12 < level ? Theme.tx : Theme.hairline)
+                    .frame(width: 4, height: 14)
+            }
+        }
+        .animation(.easeOut(duration: 0.1), value: level)
+        .accessibilityHidden(true)
+    }
+}
+
+struct TakeText: View {
+    let title: String
+    let text: String
+    let empty: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(Theme.textDim)
+                Spacer()
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }
+                .controlSize(.small)
+                .disabled(text.isEmpty)
+            }
+            Text(text.isEmpty ? empty : text)
+                .foregroundStyle(text.isEmpty ? Theme.textDim : Theme.text)
+                .textSelection(.enabled)
+                .lineLimit(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

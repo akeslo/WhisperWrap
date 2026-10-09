@@ -3,379 +3,248 @@ import Carbon
 
 struct DictationSettingsView: View {
     @ObservedObject var viewModel: DictationViewModel
+    @ObservedObject var claudePromptManager: ClaudePromptManager
+
+    var body: some View {
+        Panel(title: "Hotkeys") {
+            SettingRow(label: "Dictate", detail: "Click, then press a new combination") {
+                HotkeyRecorderView(viewModel: viewModel)
+            }
+            SettingRow(label: "Refine last dictation", detail: "Replaces the pasted text with the refined version") {
+                KeyCap(keys: "⌥⌘R")
+            }
+            SettingRow(label: "Show last result window") {
+                KeyCap(keys: "⌥⇧V")
+            }
+        }
+
+        Panel(title: "Speech") {
+            SettingRow(label: "Engine") {
+                Picker("Engine", selection: $viewModel.dictationEngine) {
+                    ForEach(DictationEngine.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+            if viewModel.dictationEngine == .whisper {
+                SettingRow(label: "Whisper model") {
+                    Picker("Whisper model", selection: $viewModel.selectedModel) {
+                        ForEach(Model.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 200)
+                }
+            }
+            SettingRow(label: "Microphone") {
+                Picker("Microphone", selection: $viewModel.selectedAudioDeviceID) {
+                    ForEach(viewModel.availableAudioDevices, id: \.id) { device in
+                        Text(device.name).tag(device.id as String?)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 200)
+            }
+        }
+
+        Panel(title: "Refine") {
+            SettingRow(label: "Default prompt", detail: "Edit prompts on the Prompts page") {
+                Picker("Default prompt", selection: $viewModel.selectedClaudePromptID) {
+                    ForEach(claudePromptManager.allPrompts) { prompt in
+                        Text(prompt.name).tag(prompt.id as UUID?)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 200)
+            }
+            SettingRow(label: "Claude model") {
+                Picker("Claude model", selection: $viewModel.selectedClaudeModel) {
+                    Text("Haiku").tag("haiku")
+                    Text("Sonnet").tag("sonnet")
+                    Text("Opus").tag("opus")
+                }
+                .labelsHidden()
+                .frame(width: 200)
+            }
+            Text("Refining sends the transcript to Claude through your local claude CLI.")
+                .font(.caption)
+                .foregroundStyle(Theme.textDim)
+        }
+
+        Panel(title: "Behavior") {
+            SettingRow(label: "Keep text on clipboard", detail: "Off restores your previous clipboard after pasting") {
+                Toggle("Keep text on clipboard", isOn: $viewModel.autoCopy).labelsHidden().toggleStyle(.switch)
+            }
+            SettingRow(label: "Show recording HUD") {
+                Toggle("Show recording HUD", isOn: $viewModel.showHUD).labelsHidden().toggleStyle(.switch)
+            }
+            SettingRow(label: "Launch at login") {
+                Toggle("Launch at login", isOn: $viewModel.launchAtLogin).labelsHidden().toggleStyle(.switch)
+            }
+            SettingRow(label: "Save recordings") {
+                Toggle("Save recordings", isOn: Binding(
+                    get: { viewModel.saveRecordings },
+                    set: { newValue in
+                        viewModel.saveRecordings = newValue
+                        if newValue && viewModel.recordingsSaveDirectory == nil {
+                            viewModel.selectRecordingsDirectory()
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+            }
+            if viewModel.saveRecordings, let saveDir = viewModel.recordingsSaveDirectory {
+                SettingRow(label: "Recordings folder") {
+                    Text(saveDir.path)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 260, alignment: .trailing)
+                    Button("Change…") { viewModel.selectRecordingsDirectory() }
+                }
+            }
+        }
+    }
+}
+
+/// Prompts page: pick a prompt, edit its text, reset builtins, add or delete custom ones.
+struct PromptsView: View {
     @ObservedObject var claudeService: ClaudeService
     @ObservedObject var claudePromptManager: ClaudePromptManager
 
-    @AppStorage("promptPickerCountdownDuration") private var promptPickerCountdownDuration: Double = 5.0
-    @State private var claudeSetupError: String?
-    @State private var showClaudeSetupAlert = false
-    @State private var isCheckingClaude = false
-    @State private var customPromptName: String = ""
-    @State private var customPromptText: String = ""
-    @State private var editingPromptText: String = ""
-    @State private var promptTextModified: Bool = false
+    @State private var selectedID: UUID?
+    @State private var draft = ""
+    @State private var newName = ""
+    @State private var newText = ""
+    @State private var isChecking = false
+    @State private var checkMessage: String?
+
+    private var selected: ClaudePrompt? {
+        claudePromptManager.allPrompts.first { $0.id == selectedID }
+    }
 
     var body: some View {
-        GroupBox(label: Label("Settings", systemImage: "gear")) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Engine")
-                        .frame(width: 100, alignment: .leading)
-                    Picker("", selection: $viewModel.dictationEngine) {
-                        ForEach(DictationEngine.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
-                    Spacer()
-                }
-
-                HStack {
-                    Text("Model")
-                        .frame(width: 100, alignment: .leading)
-                    Picker("", selection: $viewModel.selectedModel) {
-                        ForEach(Model.allCases) { model in
-                            Text(model.displayName).tag(model)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 200)
-                    .disabled(viewModel.dictationEngine == .parakeet)
-
-                    Spacer()
-
-                    Toggle("Start at Login", isOn: $viewModel.launchAtLogin)
-                        .toggleStyle(.switch)
-                }
-
-                HStack {
-                    Text("Input Device")
-                        .frame(width: 100, alignment: .leading)
-                    Picker("", selection: $viewModel.selectedAudioDeviceID) {
-                        ForEach(viewModel.availableAudioDevices, id: \.id) { device in
-                            Text(device.name).tag(device.id as String?)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 200)
-
-                    Spacer()
-                }
-
-                Divider()
-
-                HStack {
-                    Text("Prompt picker timeout")
-                    Stepper(
-                        value: $promptPickerCountdownDuration,
-                        in: 2...30,
-                        step: 1
-                    ) {
-                        Text("\(Int(promptPickerCountdownDuration))s")
-                            .monospacedDigit()
-                    }
-                    .frame(width: 140)
-
-                    Spacer()
-                }
-
-                Divider()
-
-                HStack {
-                    Toggle("Auto Copy", isOn: $viewModel.autoCopy)
-                    Toggle("Auto Paste", isOn: $viewModel.autoPaste)
-                        .help("Pastes into the frontmost app (needs Accessibility). Restores your clipboard unless Auto Copy is on.")
-                    Toggle("Show HUD", isOn: $viewModel.showHUD)
-
-                    if viewModel.showHUD {
-                        Button("Reset HUD Position") {
-                            HUDWindowController.shared.resetPosition()
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                        .foregroundColor(.accentColor)
-                    }
-
-                    Toggle("Save Recordings", isOn: Binding(
-                        get: { viewModel.saveRecordings },
-                        set: { newValue in
-                            if newValue && viewModel.recordingsSaveDirectory == nil {
-                                // Prompt for directory if turning on and no directory set
-                                viewModel.saveRecordings = true
-                                viewModel.selectRecordingsDirectory()
-                            } else {
-                                viewModel.saveRecordings = newValue
-                            }
-                        }
-                    ))
-                }
-
-                // Show save path if recordings are being saved
-                if viewModel.saveRecordings, let saveDir = viewModel.recordingsSaveDirectory {
-                    HStack(spacing: 8) {
-                        Text("Save Path:")
-                            .foregroundColor(.secondary)
-                        Text(saveDir.path)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Button("Change...") {
-                            viewModel.selectRecordingsDirectory()
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-
-                Divider()
-
-                HStack {
-                    Text("Global Hotkey:")
-                    Spacer()
-                    HotkeyRecorderView(viewModel: viewModel)
-                }
-            }
-            .padding(8)
-        }
-        .padding(.horizontal)
-
-        // MARK: - Last Dictation Section
-        GroupBox(label: Label("Last Dictation", systemImage: "text.bubble")) {
-            VStack(alignment: .leading, spacing: 12) {
-                lastDictationSection(title: "Transcription", text: viewModel.lastRawTranscription)
-                if !viewModel.lastProcessedOutput.isEmpty {
-                    Divider()
-                    lastDictationSection(title: "AI Output", text: viewModel.lastProcessedOutput)
-                }
-            }
-            .padding(8)
-        }
-        .padding(.horizontal)
-
-        // MARK: - Claude Processing Section
-        GroupBox(label: Label("Claude Processing", systemImage: "brain")) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Toggle("Process with Claude", isOn: Binding(
-                        get: { viewModel.claudeEnabled },
-                        set: { newValue in
-                            if newValue && !claudeService.isConnected {
-                                // First-time enable: check CLI + auth
-                                enableClaude()
-                            } else {
-                                viewModel.claudeEnabled = newValue
-                            }
-                        }
-                    ))
-
-                    Spacer()
-
-                    if isCheckingClaude {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Connecting...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else if claudeService.isConnected && viewModel.claudeEnabled {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                            Text("Connected")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                Text("Sends your transcribed text to Anthropic's Claude for processing. This may share sensitive data.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                if viewModel.claudeEnabled {
-                    Text("A prompt picker appears after each transcription — pick one or it uses your default after \(Int(promptPickerCountdownDuration))s. ⌥⇧V shows the last transcription and AI output.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    HStack {
-                        Text("CLI Path")
-                            .frame(width: 100, alignment: .leading)
-                        TextField("e.g. /usr/local/bin/claude (optional)", text: $claudeService.customClaudePath)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                        Spacer()
-                    }
-
-                    HStack {
-                        Text("Model")
-                            .frame(width: 100, alignment: .leading)
-                        Picker("", selection: $viewModel.selectedClaudeModel) {
-                            Text("Haiku").tag("haiku")
-                            Text("Sonnet").tag("sonnet")
-                            Text("Opus").tag("opus")
-                        }
-                        .labelsHidden()
-                        .frame(width: 200)
-                        Spacer()
-                    }
-
-                    HStack {
-                        Text("Prompt")
-                            .frame(width: 100, alignment: .leading)
-                        Picker("", selection: $viewModel.selectedClaudePromptID) {
-                            ForEach(claudePromptManager.allPrompts) { prompt in
-                                Text(prompt.name).tag(prompt.id as UUID?)
-                            }
-                            Divider()
-                            Text("Custom...").tag(nil as UUID?)
-                        }
-                        .labelsHidden()
-                        .frame(width: 200)
-                        .onChange(of: viewModel.selectedClaudePromptID) { _, newValue in
-                            loadPromptText(for: newValue)
-                        }
-
-                        if let selectedID = viewModel.selectedClaudePromptID,
-                           let selected = claudePromptManager.allPrompts.first(where: { $0.id == selectedID }),
-                           !selected.isBuiltin {
-                            Button(role: .destructive) {
-                                claudePromptManager.deleteCustomPrompt(selected)
-                                viewModel.selectedClaudePromptID = ClaudePrompt.builtinPolish.id
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-
-                        Spacer()
-                    }
-
-                    // Prompt text editor for selected prompts
-                    if let selectedID = viewModel.selectedClaudePromptID,
-                       let selected = claudePromptManager.allPrompts.first(where: { $0.id == selectedID }) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            TextEditor(text: $editingPromptText)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(minHeight: 60, maxHeight: 120)
-                                .scrollContentBackground(.hidden)
-                                .padding(4)
-                                .background(Color(nsColor: .textBackgroundColor))
-                                .cornerRadius(6)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                                )
-                                .onChange(of: editingPromptText) { _, newValue in
-                                    promptTextModified = newValue != selected.prompt
-                                }
-
+        Page(title: "Prompts", lede: "Instructions Claude follows when you refine a dictation or a file.") {
+            Panel(title: "Library") {
+                VStack(spacing: 2) {
+                    ForEach(claudePromptManager.allPrompts) { prompt in
+                        Button {
+                            select(prompt)
+                        } label: {
                             HStack {
-                                if selected.isBuiltin && claudePromptManager.builtinOverrides[selected.id.uuidString] != nil {
-                                    Button("Reset to Default") {
-                                        claudePromptManager.resetBuiltinPrompt(selected)
-                                        loadPromptText(for: viewModel.selectedClaudePromptID)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .foregroundColor(.secondary)
-                                }
-
+                                Text(prompt.name).foregroundStyle(Theme.text)
                                 Spacer()
-
-                                if promptTextModified {
-                                    Button("Save") {
-                                        claudePromptManager.updatePrompt(selected, newText: editingPromptText)
-                                        promptTextModified = false
-                                    }
-                                    .buttonStyle(.bordered)
+                                if prompt.isBuiltin {
+                                    Text(claudePromptManager.builtinOverrides[prompt.id.uuidString] != nil ? "Built-in, edited" : "Built-in")
+                                        .font(.caption).foregroundStyle(Theme.textDim)
                                 }
                             }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(prompt.id == selectedID ? Theme.ground : .clear,
+                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .contentShape(Rectangle())
                         }
-                    }
-
-                    if viewModel.selectedClaudePromptID == nil {
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Save Custom Prompt")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            HStack {
-                                TextField("Name", text: $customPromptName)
-                                    .frame(width: 120)
-                                TextField("Prompt instructions...", text: $customPromptText)
-                                Button("Save") {
-                                    guard !customPromptName.isEmpty, !customPromptText.isEmpty else { return }
-                                    claudePromptManager.saveCustomPrompt(name: customPromptName, prompt: customPromptText)
-                                    if let newPrompt = claudePromptManager.allPrompts.last {
-                                        viewModel.selectedClaudePromptID = newPrompt.id
-                                    }
-                                    customPromptName = ""
-                                    customPromptText = ""
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(customPromptName.isEmpty || customPromptText.isEmpty)
-                            }
-                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-            .padding(8)
+
+            if let prompt = selected {
+                Panel(title: prompt.name) {
+                    TextEditor(text: $draft)
+                        .font(.system(.body, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                        .frame(minHeight: 120, maxHeight: 220)
+                        .background(Theme.ground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairline))
+                    HStack {
+                        if prompt.isBuiltin {
+                            Button("Reset to Default") {
+                                claudePromptManager.resetBuiltinPrompt(prompt)
+                                reload()
+                            }
+                            .disabled(claudePromptManager.builtinOverrides[prompt.id.uuidString] == nil)
+                        } else {
+                            Button("Delete Prompt", role: .destructive) {
+                                claudePromptManager.deleteCustomPrompt(prompt)
+                                selectedID = nil
+                                draft = ""
+                            }
+                        }
+                        Spacer()
+                        Button("Save Changes") {
+                            claudePromptManager.updatePrompt(prompt, newText: draft)
+                        }
+                        .keyboardShortcut("s", modifiers: .command)
+                        .disabled(draft == prompt.prompt || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+
+            Panel(title: "New prompt") {
+                TextField("Name", text: $newName)
+                TextField("Instructions, e.g. Rewrite as a friendly Slack message", text: $newText, axis: .vertical)
+                    .lineLimit(2...5)
+                HStack {
+                    Spacer()
+                    Button("Add Prompt") {
+                        claudePromptManager.saveCustomPrompt(name: newName, prompt: newText)
+                        if let added = claudePromptManager.allPrompts.last { select(added) }
+                        newName = ""
+                        newText = ""
+                    }
+                    .disabled(newName.isEmpty || newText.isEmpty)
+                }
+            }
+
+            Panel(title: "Claude CLI") {
+                SettingRow(label: "CLI path", detail: "Leave empty to find claude on your PATH") {
+                    TextField("/usr/local/bin/claude", text: $claudeService.customClaudePath)
+                        .frame(width: 240)
+                }
+                HStack(spacing: 8) {
+                    if isChecking {
+                        TallyLight(color: Theme.amber, pulsing: true)
+                        Text("Checking…").foregroundStyle(Theme.textDim)
+                    } else if let checkMessage {
+                        Text(checkMessage).font(.caption).foregroundStyle(Theme.textDim)
+                    } else if claudeService.isConnected {
+                        TallyLight(color: Theme.landed)
+                        Text("Signed in").foregroundStyle(Theme.textDim)
+                    }
+                    Spacer()
+                    Button("Check Connection") { check() }
+                        .disabled(isChecking)
+                }
+            }
         }
-        .padding(.horizontal)
         .onAppear {
-            loadPromptText(for: viewModel.selectedClaudePromptID)
-        }
-        .alert("Claude Setup Error", isPresented: $showClaudeSetupAlert) {
-            Button("OK") { }
-        } message: {
-            Text(claudeSetupError ?? "Unknown error")
+            if selectedID == nil, let first = claudePromptManager.allPrompts.first { select(first) }
         }
     }
 
-    private func loadPromptText(for promptID: UUID?) {
-        guard let id = promptID,
-              let prompt = claudePromptManager.allPrompts.first(where: { $0.id == id }) else {
-            editingPromptText = ""
-            promptTextModified = false
-            return
-        }
-        editingPromptText = prompt.prompt
-        promptTextModified = false
+    private func select(_ prompt: ClaudePrompt) {
+        selectedID = prompt.id
+        draft = prompt.prompt
     }
 
-    private func enableClaude() {
-        isCheckingClaude = true
+    private func reload() {
+        draft = selected?.prompt ?? ""
+    }
+
+    private func check() {
+        isChecking = true
+        checkMessage = nil
         Task {
-            defer { isCheckingClaude = false }
+            defer { isChecking = false }
             switch await claudeService.verifyClaudeSetup() {
-            case .success:
-                viewModel.claudeEnabled = true
-            case .failure(let message):
-                claudeSetupError = message
-                showClaudeSetupAlert = true
+            case .success: checkMessage = nil
+            case .failure(let message): checkMessage = message
             }
-        }
-    }
-
-    @ViewBuilder
-    private func lastDictationSection(title: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(text, forType: .string)
-                }
-                .disabled(text.isEmpty)
-            }
-            Text(text.isEmpty ? "No transcription yet." : text)
-                .font(.system(.body, design: .default))
-                .foregroundColor(text.isEmpty ? .secondary : .primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(6)
         }
     }
 }
@@ -389,20 +258,22 @@ struct HotkeyRecorderView: View {
     var body: some View {
         Button(action: {
             isRecording = true
-            isFocused = true
+            // Focusable only while recording, so it can't grab initial focus and scroll the page.
+            DispatchQueue.main.async { isFocused = true }
         }) {
-            Text(isRecording ? "Press keys..." : viewModel.hotkeyDisplayString)
-                .foregroundColor(isRecording ? .blue : .secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 6).fill(isRecording ? Color.blue.opacity(0.1) : Color.secondary.opacity(0.1)))
+            Text(isRecording ? "Press new keys…" : viewModel.hotkeyDisplayString)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.text)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.ground, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isRecording ? Color.blue : Color.clear, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(isRecording ? Theme.text.opacity(0.6) : Theme.hairline)
                 )
         }
         .buttonStyle(.plain)
-        .focusable()
+        .focusable(isRecording)
         .focused($isFocused)
         .onKeyPress { keyPress in
             guard isRecording else { return .ignored }

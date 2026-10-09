@@ -7,133 +7,64 @@ struct MenuBarView: View {
     @Environment(\.dismissWindow) private var dismissWindow
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("WhisperWrap")
-                    .font(.headline)
-                
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                TallyLight(color: tally.color, pulsing: tally.pulsing)
+                Text(tally.label)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.text)
                 Spacer()
-                
-                Button(action: openMainApp) {
-                    Image(systemName: "gear")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Open Settings")
+                KeyCap(keys: viewModel.hotkeyDisplayString)
             }
-            .padding()
-            .background(Color(nsColor: .windowBackgroundColor))
-            
-            Divider()
-            
-            // Quick Actions
-            VStack(spacing: 12) {
-                // Recording Control Button
-                Button(action: {
-                    if viewModel.isRecording {
-                        viewModel.stopRecording()
-                    } else if viewModel.isProcessing {
-                        // A transcription is in flight against the fixed dictation.wav —
-                        // starting a new recording here would truncate the file the
-                        // in-flight transcription is still reading.
-                        viewModel.cancelTranscription()
-                    } else {
-                        viewModel.startRecording()
-                    }
-                    // Popover is now closed by MenuBarManager when recording state changes
-                }) {
-                    HStack {
-                        Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.fill")
-                        Text(viewModel.isRecording ? "Stop Recording" : "Start Recording")
-                        Spacer()
-                        Text(viewModel.hotkeyDisplayString)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(viewModel.isRecording ? Color.red : Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-                
-                // Show Last Transcription
-                if !viewModel.isRecording && !viewModel.transcribedText.isEmpty {
-                    Button(action: {
-                        contentViewModel.requestedTab = .dictation
-                        openMainApp()
-                    }) {
-                        HStack {
-                            Image(systemName: "doc.text.fill")
-                            Text("Show Last Transcription")
-                            Spacer()
-                        }
-                        .padding()
+            .padding(12)
+
+            PermissionsBanner()
+
+            Text(preview)
+                .font(.system(size: 12))
+                .foregroundStyle(viewModel.lastRawTranscription.isEmpty ? Theme.textDim : Theme.text)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline))
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+
+            VStack(spacing: 8) {
+                Button(action: toggleDictation) {
+                    Label(primaryTitle, systemImage: viewModel.isRecording ? "stop.fill" : (viewModel.isProcessing ? "xmark" : "mic.fill"))
                         .frame(maxWidth: .infinity)
-                        .background(Color(nsColor: .controlBackgroundColor))
-                        .foregroundColor(.primary)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
                 }
-                
-                // TTS Button
-                Button(action: {
-                    contentViewModel.requestedTab = .tts
-                    openMainApp()
-                }) {
-                    HStack {
-                        Image(systemName: "speaker.wave.2.fill")
-                        Text("Text to Speech")
-                        Spacer()
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .foregroundColor(.primary)
-                    .cornerRadius(8)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .tint(Theme.tx)
+
+                Button {
+                    Task { await viewModel.refineLast() }
+                } label: {
+                    Label(viewModel.isRefining ? "Refining…" : "Refine Last", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
-                
-                // Audio to Text Button
-                Button(action: {
-                    contentViewModel.requestedTab = .transcribe
-                    openMainApp()
-                }) {
-                    HStack {
-                        Image(systemName: "waveform")
-                        Text("Transcribe")
-                        Spacer()
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .foregroundColor(.primary)
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
+                .controlSize(.large)
+                .disabled(viewModel.lastRawTranscription.isEmpty || viewModel.isRefining || viewModel.isRecording)
             }
-            .padding()
-            
-            Divider()
-            
-            // Quit Button
-            Button(action: {
-                NSApp.terminate(nil)
-            }) {
-                HStack {
-                    Image(systemName: "power")
-                    Text("Quit WhisperWrap")
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+            .padding(12)
+
+            Divider().overlay(Theme.hairline)
+
+            HStack {
+                Button("Open WhisperWrap") { openMainApp() }
+                Spacer()
+                Button("Quit") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q")
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
+            .buttonStyle(.borderless)
+            .foregroundStyle(Theme.textDim)
+            .padding(12)
         }
+        .background(Theme.ground)
+        .preferredColorScheme(.dark)
         .frame(width: 300)
         .onAppear {
             viewModel.contentViewModel = contentViewModel
@@ -142,8 +73,8 @@ struct MenuBarView: View {
             switch alertType {
             case .accessibility:
                 return Alert(
-                    title: Text("Accessibility Access Required"),
-                    message: Text("Auto-paste requires accessibility permissions. The transcribed text has been copied to your clipboard, but cannot be pasted automatically. Please enable accessibility access in System Settings to use auto-paste."),
+                    title: Text("Paste Blocked"),
+                    message: Text("Your text is on the clipboard but could not be pasted. Turn on WhisperWrap in System Settings > Privacy & Security > Accessibility, then dictate again."),
                     primaryButton: .default(Text("Open Settings"), action: {
                         PermissionsManager.shared.openAccessibilitySettings()
                         MenuBarManager.shared.closePopover()
@@ -152,8 +83,8 @@ struct MenuBarView: View {
                 )
             case .microphoneDenied:
                 return Alert(
-                    title: Text("Microphone Access Denied"),
-                    message: Text("WhisperWrap needs microphone access to dictate text. Please enable it in System Settings."),
+                    title: Text("Microphone Blocked"),
+                    message: Text("WhisperWrap can't hear you. Turn on WhisperWrap in System Settings > Privacy & Security > Microphone."),
                     primaryButton: .default(Text("Open Settings"), action: {
                         PermissionsManager.shared.openSystemSettings()
                         MenuBarManager.shared.closePopover()
@@ -164,23 +95,55 @@ struct MenuBarView: View {
         }
     }
     
+    private var tally: (color: Color, pulsing: Bool, label: String) {
+        if viewModel.isRecording { return (Theme.tx, true, "Recording") }
+        if viewModel.isProcessing { return (Theme.amber, true, "Decoding") }
+        if viewModel.isRefining { return (Theme.amber, true, "Refining") }
+        if !viewModel.lastRawTranscription.isEmpty { return (Theme.landed, false, "Pasted") }
+        return (Theme.textDim, false, "Ready")
+    }
+
+    private var preview: String {
+        let refined = viewModel.lastProcessedOutput
+        let raw = viewModel.lastRawTranscription
+        if !refined.isEmpty { return refined }
+        return raw.isEmpty ? "Press \(viewModel.hotkeyDisplayString) and speak. Your words paste where the cursor is." : raw
+    }
+
+    private var primaryTitle: String {
+        if viewModel.isRecording { return "Stop Dictation" }
+        if viewModel.isProcessing { return "Cancel Transcription" }
+        return "Start Dictation"
+    }
+
+    private func toggleDictation() {
+        if viewModel.isRecording {
+            viewModel.stopRecording()
+        } else if viewModel.isProcessing {
+            // A transcription is in flight against the fixed dictation.wav; starting a new
+            // recording would truncate the file it is still reading.
+            viewModel.cancelTranscription()
+        } else {
+            viewModel.startRecording()
+        }
+    }
+
     private func openMainApp() {
         // Signal AppDelegate to allow window to show
-        if let appDelegate = NSApp.delegate as? AppDelegate {
+        if let appDelegate = AppDelegate.shared {
             appDelegate.shouldShowMainWindow = true
         }
         
-        // First, try to find and focus an existing main window
-        for window in NSApp.windows {
-            if window.identifier?.rawValue == "main" || window.title.contains("WhisperWrap") {
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                return
-            }
-        }
-        
-        // Only open a new window if none exists
-        openWindow(id: "main")
+        // An accessory app can't take focus, so the window opened behind whatever app was
+        // frontmost. Become a regular app first, then force the window to the front.
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" || $0.title.contains("WhisperWrap") }) {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        } else {
+            openWindow(id: "main")
+        }
     }
 }

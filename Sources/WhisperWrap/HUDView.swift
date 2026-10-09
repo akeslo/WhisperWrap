@@ -1,326 +1,208 @@
 import SwiftUI
-import AppKit
 
+/// One state at a time, one shape that morphs: recording capsule -> Refine pill.
 struct HUDView: View {
     @ObservedObject var state: HUDState
     var onClose: () -> Void
-    @State private var showCopied = false
+    var onDevice: (String) -> Void
+    var onRefine: (UUID?) -> Void
+    var onDismissPill: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            if state.showingDevicePicker && state.status == .listening {
-                HUDDevicePickerView(state: state)
-                Divider()
+        Group {
+            if state.isPill { pill } else { capsule }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.ground, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+        .padding(1)
+        .environment(\.colorScheme, .dark)
+    }
+
+    // MARK: - Capsule
+
+    private var capsule: some View {
+        HStack(spacing: 10) {
+            TallyLight(color: tallyColor, pulsing: state.status != .listening && state.status != .landed)
+                .id(tallyColor.description) // restart pulse when the state changes
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textDim)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
 
-            HStack(spacing: 12) {
-                Image(systemName: hudIcon)
-                    .font(.title2)
-                    .foregroundColor(hudIconColor)
-                    .symbolEffect(.pulse, isActive: state.status == .listening)
-                    .onTapGesture {
-                        if state.status == .listening {
-                            toggleDevicePicker()
-                        }
-                    }
+            Spacer(minLength: 6)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("WhisperWrap")
-                        .font(.headline)
-                        .fixedSize()
-                    HStack(spacing: 4) {
-                        Text(hudStatusText)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .fixedSize()
-                        if state.status == .listening, let deviceName = selectedDeviceName {
-                            Text("·")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(deviceName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
+            if state.status == .listening {
+                LevelMeter(level: state.audioLevel)
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    Text(elapsed(at: ctx.date))
+                        .font(Theme.numerals(11))
+                        .foregroundStyle(Theme.amber)
+                        .monospacedDigit()
                 }
-                .onTapGesture {
-                    if state.status == .listening {
-                        toggleDevicePicker()
-                    }
-                }
-
-                Spacer()
-
-                if state.status != .processingWithClaude && state.status != .selectingPrompt && state.status != .showingResults {
-                    // Visualizer - organic "dancing" bars
-                    HStack(spacing: 4) {
-                        ForEach(0..<20) { index in
-                            let t = state.phase
-                            let i = Double(index)
-                            let h1 = sin(t + i * 0.6)
-                            let h2 = cos(t * 0.8 - i * 1.2)
-                            let h3 = sin(t * 0.2 + i * 2.5)
-                            let baseSignal = abs(h1 + h2 + 0.5 * h3)
-                            let wave = CGFloat(baseSignal) * 12.0
-
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(Color.blue)
-                                .frame(width: 4, height: 4 + wave * (0.5 + CGFloat(state.audioLevel) * 5.0) + (CGFloat(state.audioLevel) * 30))
-                        }
-                    }
-                    .frame(height: 40)
-                    .animation(.linear(duration: 0.05), value: state.phase)
-                }
-
-                // Close button
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help(state.status == .listening ? "Stop Recording" : "Cancel")
+                deviceMenu
             }
-            .padding()
 
-            if state.status == .selectingPrompt {
-                Divider()
-                VStack(spacing: 8) {
-                    if state.isEnteringCustomPrompt {
-                        HStack(spacing: 8) {
-                            TextField("Enter custom prompt...", text: $state.customPromptText)
-                                .textFieldStyle(.plain)
-                                .font(.system(.body, design: .monospaced))
-                                .padding(6)
-                                .background(Color(nsColor: .textBackgroundColor))
-                                .cornerRadius(8)
-                                .onSubmit {
-                                    HUDWindowController.shared.submitCustomPrompt(state.customPromptText)
-                                }
-                            Button(action: {
-                                state.isEnteringCustomPrompt = false
-                            }) {
-                                Image(systemName: "xmark")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.textDim)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(state.status == .listening ? "Cancel recording" : "Hide")
+        }
+        .padding(.horizontal, 14)
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
+
+    private var deviceMenu: some View {
+        Menu {
+            ForEach(state.availableDevices, id: \.id) { device in
+                Button {
+                    onDevice(device.id)
+                } label: {
+                    if device.id == state.selectedDeviceID {
+                        Label(device.name, systemImage: "checkmark")
                     } else {
-                        ScrollView(.horizontal, showsIndicators: true) {
-                            HStack(spacing: 6) {
-                                ForEach(state.availablePrompts) { prompt in
-                                    Button(action: {
-                                        HUDWindowController.shared.selectPrompt(prompt)
-                                    }) {
-                                        Text(prompt.name)
-                                            .font(.system(.caption, weight: prompt.id == state.defaultPromptID ? .semibold : .regular))
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 5)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .fill(prompt.id == state.defaultPromptID ? Color.purple.opacity(0.2) : Color.secondary.opacity(0.1))
-                                            )
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(prompt.id == state.defaultPromptID ? Color.purple.opacity(0.5) : Color.clear, lineWidth: 1)
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                Button(action: {
-                                    HUDWindowController.shared.skipPromptSelection()
-                                }) {
-                                    Text("None")
-                                        .font(.system(.caption))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(Color.secondary.opacity(0.1))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                Button(action: {
-                                    state.isEnteringCustomPrompt = true
-                                }) {
-                                    Text("Custom...")
-                                        .font(.system(.caption))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(Color.secondary.opacity(0.1))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.trailing, 4)
-                        }
-                        .scrollIndicators(.visible)
+                        Text(device.name)
                     }
-
-                    // Countdown progress bar
-                    GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.purple.opacity(0.4))
-                            .frame(width: geo.size.width * state.countdownProgress, height: 4)
-                            .animation(.linear(duration: 0.05), value: state.countdownProgress)
-                    }
-                    .frame(height: 4)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 10)
             }
+        } label: {
+            Image(systemName: "mic")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textDim)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Switch microphone")
+    }
 
-            if (state.status == .processingWithClaude || state.status == .showingResults) && !state.streamingText.isEmpty {
+    // MARK: - Refine pill
+
+    private var pill: some View {
+        HStack(spacing: 0) {
+            Button { onRefine(nil) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.amber)
+                    Text("Refine")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Text("⌥⌘R")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.textDim)
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 6)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Refine with \(defaultPromptName) and replace the pasted text")
+
+            Rectangle().fill(Theme.hairline).frame(width: 1, height: 16)
+
+            Menu {
+                ForEach(state.prompts) { prompt in
+                    Button(prompt.name) { onRefine(prompt.id) }
+                }
                 Divider()
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        Text(state.streamingText)
-                            .font(.system(.body, design: .default))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .textSelection(.enabled)
-                            .id("streamBottom")
-                    }
-                    .frame(maxHeight: 200)
-                    .onChange(of: state.streamingText) { _, _ in
-                        withAnimation {
-                            proxy.scrollTo("streamBottom", anchor: .bottom)
-                        }
-                    }
-                }
-
-                if state.status == .showingResults {
-                    Divider()
-                    HStack {
-                        Spacer()
-                        Button(action: copyToClipboard) {
-                            HStack(spacing: 5) {
-                                Image(systemName: showCopied ? "checkmark.circle.fill" : "doc.on.doc")
-                                    .font(.system(size: 12, weight: .medium))
-                                Text(showCopied ? "Copied!" : "Copy")
-                                    .font(.system(.caption, weight: .medium))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(showCopied ? Color.green.opacity(0.15) : Color.secondary.opacity(0.12))
-                            )
-                            .foregroundColor(showCopied ? .green : .primary)
-                        }
-                        .buttonStyle(.plain)
-                        .animation(.easeInOut(duration: 0.15), value: showCopied)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
+                Button("Dismiss", action: onDismissPill)
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.textDim)
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .padding(.horizontal, 8)
+            .help("Refine with another prompt")
         }
-        .background(.regularMaterial)
-        .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(
-                    state.status == .showingResults
-                        ? Color.green.opacity(0.35)
-                        : Color.secondary.opacity(0.2),
-                    lineWidth: state.status == .showingResults ? 1.5 : 1
-                )
-        )
-        .shadow(color: state.status == .showingResults ? Color.green.opacity(0.12) : .clear, radius: 10)
-        .animation(.easeInOut(duration: 0.3), value: state.status == .showingResults)
-        .padding(10)
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
 
-    private func copyToClipboard() {
-        HUDWindowController.shared.copyToClipboardWithRestore(state.streamingText)
-        showCopied = true
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            showCopied = false
+    // MARK: - Copy
+
+    private var tallyColor: Color {
+        switch state.status {
+        case .listening: Theme.tx
+        case .transcribing, .processingWithClaude, .refineOffer: Theme.amber
+        case .landed: Theme.landed
+        case .failed: Theme.tx
         }
     }
 
-    private func toggleDevicePicker() {
-        if state.showingDevicePicker {
-            HUDWindowController.shared.hideDevicePicker()
-        } else {
-            HUDWindowController.shared.showDevicePicker()
+    private var title: String {
+        switch state.status {
+        case .listening: "Listening"
+        case .transcribing: "Transcribing"
+        case .refineOffer: "Pasted"
+        case .processingWithClaude: "Refining"
+        case .landed: "Refined and replaced"
+        case .failed(let message): message
+        }
+    }
+
+    private var subtitle: String? {
+        if !state.note.isEmpty { return state.note }
+        switch state.status {
+        case .listening: return selectedDeviceName
+        case .processingWithClaude: return defaultPromptName
+        default: return nil
         }
     }
 
     private var selectedDeviceName: String? {
-        state.availableDevices.first(where: { $0.id == state.selectedDeviceID })?.name
+        state.availableDevices.first { $0.id == state.selectedDeviceID }?.name
     }
 
-    private var hudIcon: String {
-        switch state.status {
-        case .listening: return "mic.fill"
-        case .transcribing: return "waveform.circle.fill"
-        case .selectingPrompt: return "brain"
-        case .processingWithClaude: return "brain"
-        case .showingResults: return "checkmark.circle.fill"
-        }
+    private var defaultPromptName: String {
+        state.prompts.first { $0.id == state.defaultPromptID }?.name ?? "Polish"
     }
 
-    private var hudIconColor: Color {
-        switch state.status {
-        case .listening: return .red
-        case .transcribing: return .orange
-        case .selectingPrompt: return .purple
-        case .processingWithClaude: return .purple
-        case .showingResults: return .green
-        }
-    }
-
-    private var hudStatusText: String {
-        switch state.status {
-        case .listening: return "Listening..."
-        case .transcribing: return "Transcribing..."
-        case .selectingPrompt: return "Select prompt"
-        case .processingWithClaude: return "Processing with Claude..."
-        case .showingResults: return "Done"
-        }
+    private func elapsed(at date: Date) -> String {
+        let s = max(0, Int(date.timeIntervalSince(state.recordingStartedAt)))
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 }
 
-private struct HUDDevicePickerView: View {
-    @ObservedObject var state: HUDState
+/// Five-segment input meter, red segments lit by level.
+private struct LevelMeter: View {
+    let level: Float
 
     var body: some View {
-        VStack(spacing: 4) {
-            ForEach(state.availableDevices, id: \.id) { device in
-                let isSelected = device.id == state.selectedDeviceID
-                Button(action: {
-                    HUDWindowController.shared.selectDevice(device.id)
-                    HUDWindowController.shared.hideDevicePicker()
-                }) {
-                    HStack {
-                        Text(device.name)
-                            .font(.caption)
-                        Spacer()
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isSelected ? Color.blue.opacity(0.1) : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+        // averagePower normalized from -160...0; speech lives in roughly the top 40%.
+        let lit = Int(((Double(level) - 0.6) / 0.4 * 5).rounded().clamped(to: 0...5))
+        HStack(spacing: 2) {
+            ForEach(0..<5, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(i < lit ? Theme.tx : Theme.raised)
+                    .frame(width: 3, height: CGFloat(6 + i * 2))
             }
         }
-        .padding(.horizontal)
-        .padding(.bottom, 10)
+        .frame(height: 14, alignment: .bottom)
+        .animation(.easeOut(duration: 0.1), value: lit)
+        .accessibilityHidden(true)
     }
+}
+
+private extension Double {
+    func clamped(to r: ClosedRange<Double>) -> Double { min(max(self, r.lowerBound), r.upperBound) }
 }

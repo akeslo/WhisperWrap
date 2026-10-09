@@ -38,11 +38,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
         }
     }
-    @Published var autoPaste: Bool = false {
-        didSet {
-            UserDefaults.standard.set(autoPaste, forKey: "autoPaste")
-        }
-    }
     @Published var showHUD: Bool {
         didSet {
             UserDefaults.standard.set(showHUD, forKey: "showHUD")
@@ -64,11 +59,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     // Claude Processing Settings
-    @Published var claudeEnabled: Bool = false {
-        didSet {
-            UserDefaults.standard.set(claudeEnabled, forKey: "dictationClaudeEnabled")
-        }
-    }
+    /// True while a refine of the last dictation is running.
+    @Published var isRefining = false
     @Published var selectedClaudePromptID: UUID? {
         didSet {
             if let id = selectedClaudePromptID {
@@ -147,7 +139,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
         self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
         self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
-        self.autoPaste = UserDefaults.standard.bool(forKey: "autoPaste")
         self.dictationEngine = UserDefaults.standard.string(forKey: "dictationEngine")
             .flatMap(DictationEngine.init(rawValue:)) ?? .whisper
 
@@ -162,7 +153,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
 
         // Load Claude settings
-        self.claudeEnabled = UserDefaults.standard.bool(forKey: "dictationClaudeEnabled")
         if let savedID = UserDefaults.standard.string(forKey: "dictationClaudePromptID"),
            let uuid = UUID(uuidString: savedID) {
             self.selectedClaudePromptID = uuid
@@ -210,6 +200,12 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         hotKeyManager.registerAdditional(id: 2, keyCode: kVK_ANSI_V, modifiers: optionKey | shiftKey) { [weak self] in
             Task { @MainActor in
                 self?.openLastResultWindow()
+            }
+        }
+        // Refine last dictation in place: Option+Command+R
+        hotKeyManager.registerAdditional(id: 3, keyCode: kVK_ANSI_R, modifiers: optionKey | cmdKey) { [weak self] in
+            Task { @MainActor in
+                await self?.refineLast()
             }
         }
     }
@@ -464,9 +460,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         hotKeyManager.register(keyCode: keyCode, modifiers: modifiers) { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
-                if HUDWindowController.shared.isSelectingPrompt {
-                    HUDWindowController.shared.skipPromptSelection()
-                } else if self.isProcessing {
+                if self.isProcessing {
                     self.cancelTranscription()
                 } else {
                     self.toggleRecording()
@@ -646,10 +640,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         transcribedText = message
 
         if showHUD {
-            HUDWindowController.shared.setStatus(.showingResults)
-            HUDWindowController.shared.updateStreamingText("⚠️ \(message)")
-            HUDWindowController.shared.show()
-            HUDWindowController.shared.showResultsThenFade(duration: 4.0)
+            HUDWindowController.shared.flashFailure(message)
         }
     }
     
@@ -746,7 +737,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Pastes `text` into the frontmost app via a synthesized Cmd-V. Unless the user also
     /// wants it copied, the text is marked transient (clipboard managers skip it) and the
     /// prior clipboard is restored after 300ms. Needs Accessibility; silently no-ops without it.
+    /// Tests turn this off so a run never types into whatever app has focus.
+    nonisolated(unsafe) static var keystrokesEnabled = true
+
     static func paste(_ text: String, keepOnClipboard: Bool) {
+        guard keystrokesEnabled else { return }
         guard AXIsProcessTrusted() else {
             LoggerService.shared.debug("Auto-paste skipped — Accessibility not granted")
             return
@@ -780,6 +775,65 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             guard pb.changeCount == ourChange else { return }
             pb.clearContents()
             if !saved.isEmpty { pb.writeObjects(saved) }
+        }
+    }
+
+    // MARK: - Refine
+
+    private func showRefinePill() {
+        let prompts = claudePromptManager?.allPrompts ?? ClaudePrompt.builtins
+        let defaultID = selectedClaudePromptID ?? ClaudePrompt.builtinPolish.id
+        HUDWindowController.shared.showRefinePill(prompts: prompts, defaultID: defaultID) { [weak self] promptID in
+            Task { await self?.refineLast(promptID: promptID) }
+        }
+    }
+
+    /// Runs a Claude prompt over the last raw dictation and swaps the result in for the
+    /// pasted raw text (Cmd-Z, then paste). Falls back to the default prompt.
+    func refineLast(promptID: UUID? = nil) async {
+        let raw = lastRawTranscription
+        guard !isRefining, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let claudeService, let claudePromptManager else { return }
+        let id = promptID ?? selectedClaudePromptID ?? ClaudePrompt.builtinPolish.id
+        guard let prompt = claudePromptManager.allPrompts.first(where: { $0.id == id })
+                ?? claudePromptManager.allPrompts.first else { return }
+
+        isRefining = true
+        defer { isRefining = false }
+        if showHUD { HUDWindowController.shared.setStatus(.processingWithClaude) }
+
+        var output = ""
+        for await chunk in claudeService.process(text: raw, prompt: prompt.prompt, model: selectedClaudeModel) {
+            output += chunk
+        }
+
+        switch ClaudeService.classifyOutcome(output.trimmingCharacters(in: .whitespacesAndNewlines)) {
+        case .success(let refined):
+            lastProcessedOutput = refined
+            transcribedText = refined
+            // ponytail: Cmd-Z assumes the raw paste is still the last edit in the front app;
+            // typing after the paste means undo removes that instead. Track AX selection if it bites.
+            Self.undoLastEdit()
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            Self.paste(refined, keepOnClipboard: autoCopy)
+            if autoCopy {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(refined, forType: .string)
+            }
+            if showHUD { HUDWindowController.shared.flashLanded() }
+        case .error, .emptyOutput:
+            claudeService.isConnected = false
+            if showHUD { HUDWindowController.shared.flashFailure("Refine failed, raw text kept. Check claude login.") }
+        }
+    }
+
+    static func undoLastEdit() {
+        guard keystrokesEnabled, AXIsProcessTrusted() else { return }
+        let src = CGEventSource(stateID: .combinedSessionState)
+        for down in [true, false] {
+            let e = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: down)
+            e?.flags = .maskCommand
+            e?.post(tap: .cghidEventTap)
         }
     }
 
@@ -818,7 +872,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         currentTranscriptionID = runID
 
         transcriptionTask = Task {
-            var didShowClaudeResults = false
+            var offerRefine = false
             defer {
                 // Only the still-current run may clear shared state. A stale run whose
                 // task was cancelled and superseded by a newer transcribe() call must not
@@ -828,9 +882,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     self.transcriptionTask = nil
                     if self.showHUD {
                         Task { @MainActor in
-                            if didShowClaudeResults {
-                                // Show results for 5s then fade out
-                                HUDWindowController.shared.showResultsThenFade(duration: 5.0)
+                            if offerRefine {
+                                self.showRefinePill()
                             } else {
                                 HUDWindowController.shared.clearStreamingText(animated: false)
                                 HUDWindowController.shared.hide()
@@ -844,7 +897,18 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 // Show download/load progress in HUD if model not yet ready
                 let engine = contentViewModel.transcriptionEngine
                 var hudProgressTask: Task<Void, Never>? = nil
-                if dictationEngine == .whisper && !engine.isReady && self.showHUD {
+                let parakeet = contentViewModel.parakeetEngine
+                if dictationEngine == .parakeet && !parakeet.isReady && self.showHUD {
+                    // First Parakeet load per build compiles the CoreML model (~30s); say so
+                    // instead of sitting on a silent HUD.
+                    hudProgressTask = Task { @MainActor in
+                        HUDWindowController.shared.updateStreamingText("Loading Parakeet model (first run after an update can take ~30s)...")
+                        while !Task.isCancelled && !parakeet.isReady {
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                        }
+                        HUDWindowController.shared.clearStreamingText(animated: false)
+                    }
+                } else if dictationEngine == .whisper && !engine.isReady && self.showHUD {
                     hudProgressTask = Task { @MainActor in
                         while !Task.isCancelled && !engine.isReady {
                             let progress = engine.downloadProgress
@@ -870,7 +934,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
                 let modelName = dictationEngine == .parakeet ? "parakeet-tdt-0.6b-v3" : selectedModel.rawValue
                 LoggerService.shared.debug("Transcribing with model: \(modelName)\(didTrim ? " (VAD trimmed silence)" : "")")
-                var text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel, engine: dictationEngine)
+                let text = try await contentViewModel.transcribeDictation(audioURL: processedURL, model: selectedModel, engine: dictationEngine)
                 LoggerService.shared.debug("Transcription complete — \(text.split(separator: " ").count) words")
 
                 // Check if cancelled before continuing
@@ -878,72 +942,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
                 let originalTranscription = text
 
-                // Claude processing (if enabled and there's text to process)
-                if claudeEnabled,
-                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   let claudeService = claudeService,
-                   let claudePromptManager = claudePromptManager {
-
-                    // Determine which prompt to use
-                    var selectedPromptText: String?
-                    let defaultID = selectedClaudePromptID ?? ClaudePrompt.builtinPolish.id
-
-                    if showHUD {
-                        // Brief overlay after every transcription — pick a prompt or let the default apply.
-                        let result = await HUDWindowController.shared.showPromptSelection(
-                            prompts: claudePromptManager.allPrompts,
-                            defaultID: defaultID
-                        )
-                        if Task.isCancelled { return }
-                        switch result {
-                        case .selected(let prompt):
-                            selectedPromptText = prompt.prompt
-                        case .custom(let customText):
-                            selectedPromptText = customText
-                        case .skipped, .cancelled:
-                            selectedPromptText = nil
-                        }
-                    } else if let prompt = claudePromptManager.allPrompts.first(where: { $0.id == defaultID }) {
-                        selectedPromptText = prompt.prompt
-                    }
-
-                    if let promptText = selectedPromptText {
-                        if showHUD {
-                            HUDWindowController.shared.setStatus(.processingWithClaude)
-                        }
-
-                        let stream = claudeService.process(text: text, prompt: promptText, model: selectedClaudeModel)
-                        var streamedResult = ""
-                        for await chunk in stream {
-                            if Task.isCancelled { return }
-                            streamedResult += chunk
-                            if showHUD {
-                                HUDWindowController.shared.updateStreamingText(streamedResult)
-                            }
-                        }
-
-                        let trimmed = streamedResult.trimmingCharacters(in: .whitespacesAndNewlines)
-                        switch ClaudeService.classifyOutcome(trimmed) {
-                        case .success(let processed):
-                            text = processed
-                            didShowClaudeResults = showHUD && !streamedResult.isEmpty
-                        case .error:
-                            claudeService.isConnected = false
-                        case .emptyOutput:
-                            // Empty stdout with no recognizable error text — e.g. the
-                            // `claude` CLI isn't on PATH, so `env claude ...` fails
-                            // silently to stdout. Ships the raw transcription unchanged,
-                            // but flip isConnected so the UI's Claude-status indicator
-                            // reflects that processing did not actually happen (R6).
-                            LoggerService.shared.debug("Claude processing produced no output — CLI may be missing or misconfigured")
-                            claudeService.isConnected = false
-                        }
-                    }
-                }
-
                 self.transcribedText = text
                 self.lastRawTranscription = originalTranscription
-                self.lastProcessedOutput = (text != originalTranscription) ? text : ""
+                self.lastProcessedOutput = ""
 
                 // U4: "No Speech Detected" is an in-app sentinel for the HUD/last-result
                 // display, not a transcript — copying it would clobber whatever the user
@@ -952,8 +953,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
                 }
-                if autoPaste && text != ContentViewModel.noSpeechDetectedSentinel {
+                let hasSpeech = text != ContentViewModel.noSpeechDetectedSentinel
+                    && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                if hasSpeech {
                     Self.paste(text, keepOnClipboard: autoCopy)
+                    offerRefine = true
                 }
                 if let stopAt = self.stopRequestedAt {
                     LoggerService.shared.debug("Stop-to-clipboard: \(Int(Date().timeIntervalSince(stopAt) * 1000))ms")
@@ -966,8 +970,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 LoggerService.shared.debug("Transcription error: \(msg)")
                 self.transcribedText = "Error: \(msg)"
                 if self.showHUD {
-                    HUDWindowController.shared.setStatus(.showingResults)
-                    HUDWindowController.shared.updateStreamingText("Error: \(msg)")
+                    HUDWindowController.shared.flashFailure("Transcription failed: \(msg)")
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
             }

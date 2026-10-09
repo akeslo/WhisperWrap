@@ -26,274 +26,162 @@ struct TranscriptionView: View {
     var onCancel: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 20) {
-            // MARK: - Header & Controls
-            HStack(spacing: 15) {
-                HStack {
-                    Image(systemName: "cpu")
-                        .foregroundColor(.secondary)
-                    Picker("Model", selection: $selectedModel) {
-                        ForEach(Model.allCases) { model in
-                            Text(model.displayName).tag(model)
-                        }
+        Page(title: "Files", lede: "Drop an audio file to transcribe it to text, subtitles, or JSON.") {
+            Panel(title: "Output") {
+                SettingRow(label: "Whisper model") {
+                    Picker("Whisper model", selection: $selectedModel) {
+                        ForEach(Model.allCases) { Text($0.displayName).tag($0) }
                     }
                     .labelsHidden()
-                    .frame(width: 120)
+                    .frame(width: 200)
                 }
-                .padding(8)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(8)
-
-                HStack {
-                    Image(systemName: "doc.text")
-                        .foregroundColor(.secondary)
+                SettingRow(label: "Format") {
                     Picker("Format", selection: $selectedFormat) {
-                        ForEach(formats, id: \.self) { format in
-                            Text(format.uppercased()).tag(format)
-                        }
+                        ForEach(formats, id: \.self) { Text($0.uppercased()).tag($0) }
                     }
                     .labelsHidden()
-                    .frame(width: 80)
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
                 }
-                .padding(8)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(8)
-
-                Spacer()
-            }
-            .disabled(isProcessing)
-
-            // MARK: - Claude Processing
-            HStack(spacing: 15) {
-                Toggle("Process with Claude", isOn: Binding(
-                    get: { fileClaudeEnabled },
-                    set: { newValue in
-                        if newValue && !claudeService.isConnected {
-                            enableClaude()
-                        } else {
-                            fileClaudeEnabled = newValue
-                        }
+                SettingRow(label: "Refine with Claude", detail: "Asks before sending each file's transcript") {
+                    HStack(spacing: 8) {
+                        if isCheckingClaude { TallyLight(color: Theme.amber, pulsing: true) }
+                        Toggle("Refine with Claude", isOn: Binding(
+                            get: { fileClaudeEnabled },
+                            set: { newValue in
+                                if newValue && !claudeService.isConnected { enableClaude() } else { fileClaudeEnabled = newValue }
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                     }
-                ))
-
+                }
                 if fileClaudeEnabled {
-                    Picker("Prompt", selection: $fileClaudePromptID) {
-                        ForEach(claudePromptManager.allPrompts) { prompt in
-                            Text(prompt.name).tag(prompt.id as UUID?)
+                    SettingRow(label: "Prompt") {
+                        Picker("Prompt", selection: $fileClaudePromptID) {
+                            ForEach(claudePromptManager.allPrompts) { Text($0.name).tag($0.id as UUID?) }
                         }
+                        .labelsHidden()
+                        .frame(width: 200)
                     }
-                    .labelsHidden()
-                    .frame(width: 150)
                 }
-
-                if isCheckingClaude {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Spacer()
             }
-            .padding(.horizontal, 8)
             .disabled(isProcessing)
-            .alert("Claude Setup Error", isPresented: $showClaudeSetupAlert) {
+            .alert("Claude Isn't Ready", isPresented: $showClaudeSetupAlert) {
                 Button("OK") { }
             } message: {
-                Text(claudeSetupError ?? "Unknown error")
+                Text(claudeSetupError ?? "Check the Claude CLI on the Prompts page.")
             }
 
-            // MARK: - Drop Zone
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isTargeted ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05))
-                
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(isTargeted ? Color.accentColor : Color.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [10]))
+            dropZone
 
-                if isProcessing {
-                    VStack(spacing: 20) {
-                        HStack {
-                            Spacer()
-                            Button(action: {
-                                onCancel?()
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Cancel Transcription")
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-
-                        ZStack {
-                            Circle()
-                                .stroke(Color.accentColor.opacity(0.3), lineWidth: 4)
-                                .frame(width: 80, height: 80)
-
-                            Circle()
-                                .trim(from: 0, to: processingProgress > 0 ? processingProgress : 0.05)
-                                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                                .frame(width: 80, height: 80)
-                                .rotationEffect(.degrees(-90))
-                                .animation(.linear(duration: 0.5), value: processingProgress)
-
-                            Image(systemName: "waveform")
-                                .font(.largeTitle)
-                                .foregroundColor(.accentColor)
-                                .symbolEffect(.pulse)
-                        }
-
-                        VStack(spacing: 5) {
-                            Text(processingStage.isEmpty ? "Processing..." : processingStage)
-                                .font(.headline)
-
-                            if let fileName = droppedFileName {
-                                Text(fileName)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if processingProgress > 0 {
-                                Text("\(Int(processingProgress * 100))%")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-                } else {
-                    VStack(spacing: 15) {
-                        Image(systemName: isTargeted ? "arrow.down.circle.fill" : "waveform.circle")
-                            .font(.system(size: 60))
-                            .foregroundColor(isTargeted ? .accentColor : .secondary)
-                            .symbolEffect(.bounce, value: isTargeted)
-                        
-                        VStack(spacing: 5) {
-                            Text("Drop Audio File Here")
-                                .font(.title3)
-                                .fontWeight(.medium)
-                            
-                            Text("Supports MP3, WAV, M4A, FLAC")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            }
-            .frame(height: 240)
-            .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
-                guard !isProcessing else { return false }
-                guard let provider = providers.first else { return false }
-                let typeIdentifier = "public.file-url"
-                provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { (urlData, error) in
-                    guard let urlData = urlData as? Data else { return }
-                    DispatchQueue.main.async {
-                        let url = URL(dataRepresentation: urlData, relativeTo: nil)
-                        guard let url = url else { return }
-                        droppedFileName = url.lastPathComponent
-                        
-                        if fileClaudeEnabled {
-                            let alert = NSAlert()
-                            alert.messageText = "Process with Claude?"
-                            alert.informativeText = "Do you want to send the transcribed contents of this file to Claude for processing? This may share sensitive data with Anthropic."
-                            alert.addButton(withTitle: "Yes, Send to Claude")
-                            alert.addButton(withTitle: "No, Transcribe Only")
-                            alert.addButton(withTitle: "Cancel")
-                            
-                            let response = alert.runModal()
-                            if response == .alertFirstButtonReturn {
-                                onDrop(url, selectedModel, selectedFormat, true)
-                            } else if response == .alertSecondButtonReturn {
-                                onDrop(url, selectedModel, selectedFormat, false)
-                            }
-                        } else {
-                            onDrop(url, selectedModel, selectedFormat, false)
-                        }
-                    }
-                }
-                return true
-            }
-            .animation(.easeInOut, value: isTargeted)
-            .animation(.easeInOut, value: isProcessing)
-            
-            // MARK: - Terminal Output
-            VStack(spacing: 0) {
-                HStack {
-                    Label("Log Output", systemImage: "terminal.fill")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    if !consoleOutput.isEmpty {
-                        HStack(spacing: 10) {
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(consoleOutput, forType: .string)
-                                showCopiedConfirmation = true
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                    showCopiedConfirmation = false
-                                }
-                            } label: {
-                                Image(systemName: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Copy Output")
-
-                            Button {
-                                showClearConfirmation = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Clear Output")
-                            .confirmationDialog("Clear Output", isPresented: $showClearConfirmation) {
-                                Button("Clear", role: .destructive) {
-                                    consoleOutput = ""
-                                    droppedFileName = nil
-                                }
-                                Button("Cancel", role: .cancel) { }
-                            }
-                        }
-                        .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color(nsColor: .controlBackgroundColor))
-                
-                Divider()
-
+            Panel(title: "Log") {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        Text(consoleOutput.isEmpty ? "Ready to transcribe..." : consoleOutput)
+                        Text(consoleOutput.isEmpty ? "Transcripts and progress appear here." : consoleOutput)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(consoleOutput.isEmpty ? .secondary : .primary)
+                            .foregroundStyle(consoleOutput.isEmpty ? Theme.textDim : Theme.text)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
                             .textSelection(.enabled)
                             .id("outputBottom")
                     }
+                    .frame(minHeight: 120, maxHeight: 240)
                     .onChange(of: consoleOutput) { _, _ in
-                        withAnimation {
-                            proxy.scrollTo("outputBottom", anchor: .bottom)
+                        withAnimation { proxy.scrollTo("outputBottom", anchor: .bottom) }
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button(showCopiedConfirmation ? "Copied" : "Copy Log") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(consoleOutput, forType: .string)
+                        showCopiedConfirmation = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showCopiedConfirmation = false }
+                    }
+                    Button("Clear Log") { showClearConfirmation = true }
+                        .confirmationDialog("Clear the log?", isPresented: $showClearConfirmation) {
+                            Button("Clear Log", role: .destructive) {
+                                consoleOutput = ""
+                                droppedFileName = nil
+                            }
+                            Button("Cancel", role: .cancel) { }
                         }
+                }
+                .disabled(consoleOutput.isEmpty)
+            }
+        }
+    }
+
+    private var dropZone: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isTargeted ? Theme.raised : Theme.raised.opacity(0.5))
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isTargeted ? Theme.text.opacity(0.5) : Theme.hairline, style: StrokeStyle(lineWidth: 1, dash: [6]))
+
+            if isProcessing {
+                VStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        TallyLight(color: Theme.amber, pulsing: true)
+                        Text(processingStage.isEmpty ? "Transcribing" : processingStage)
+                            .foregroundStyle(Theme.text)
+                        if processingProgress > 0 {
+                            Text("\(Int(processingProgress * 100))%")
+                                .font(Theme.numerals(13))
+                                .foregroundStyle(Theme.amber)
+                        }
+                    }
+                    if let fileName = droppedFileName {
+                        Text(fileName).font(.caption).foregroundStyle(Theme.textDim)
+                    }
+                    ProgressView(value: processingProgress > 0 ? processingProgress : nil)
+                        .frame(width: 240)
+                        .tint(Theme.amber)
+                    Button("Cancel Transcription") { onCancel?() }
+                }
+            } else {
+                VStack(spacing: 10) {
+                    Image(systemName: isTargeted ? "arrow.down.circle" : "waveform")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(isTargeted ? Theme.text : Theme.textDim)
+                    Text("Drop an audio file")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                    Text("MP3, WAV, M4A, or FLAC")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
+        }
+        .frame(height: 200)
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
+            guard !isProcessing, let provider = providers.first else { return false }
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { (urlData, _) in
+                guard let urlData = urlData as? Data else { return }
+                DispatchQueue.main.async {
+                    guard let url = URL(dataRepresentation: urlData, relativeTo: nil) else { return }
+                    droppedFileName = url.lastPathComponent
+                    if fileClaudeEnabled {
+                        let alert = NSAlert()
+                        alert.messageText = "Send this transcript to Claude?"
+                        alert.informativeText = "The transcribed text of \(url.lastPathComponent) goes to Anthropic for refining."
+                        alert.addButton(withTitle: "Transcribe and Refine")
+                        alert.addButton(withTitle: "Transcribe Only")
+                        alert.addButton(withTitle: "Cancel")
+                        let response = alert.runModal()
+                        if response == .alertFirstButtonReturn {
+                            onDrop(url, selectedModel, selectedFormat, true)
+                        } else if response == .alertSecondButtonReturn {
+                            onDrop(url, selectedModel, selectedFormat, false)
+                        }
+                    } else {
+                        onDrop(url, selectedModel, selectedFormat, false)
                     }
                 }
             }
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
-            )
-            .frame(minHeight: 120)
+            return true
         }
-        .padding()
+        .animation(.easeInOut(duration: 0.15), value: isTargeted)
     }
 
     private func enableClaude() {

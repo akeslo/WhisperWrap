@@ -7,94 +7,46 @@ struct TTSView: View {
     @State private var showFileImporter: Bool = false
     @State private var showFileExporter: Bool = false
     
+    private var canSpeak: Bool {
+        !viewModel.text.isEmpty && !viewModel.isDownloadingAudio
+            && !(viewModel.selectedEngine == .elevenLabs && viewModel.apiKey.isEmpty)
+    }
+
     var body: some View {
-        VStack(spacing: 20) {
-            // MARK: - Header
-            HStack {
-                Label("Text to Speech", systemImage: "bubble.left.and.exclamationmark.bubble.right.fill")
-                    .font(.headline)
-                Spacer()
-                
-                Button(action: { showFileImporter = true }) {
-                    Label("Import Text File", systemImage: "doc.badge.plus")
-                }
-                .buttonStyle(.bordered)
-            }
-            .fileImporter(
-                isPresented: $showFileImporter,
-                allowedContentTypes: [.plainText, .json],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first {
-                        viewModel.loadText(from: url)
+        Page(title: "Voice", lede: "Read text aloud with a system voice or ElevenLabs.") {
+            Panel(title: "Voice") {
+                SettingRow(label: "Engine") {
+                    Picker("Engine", selection: $viewModel.selectedEngine) {
+                        ForEach(TTSEngine.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                case .failure(let error):
-                    LoggerService.shared.debug("File import failed: \(error)")
-                }
-            }
-            
-            // MARK: - Engine Selector
-            Picker("Engine", selection: $viewModel.selectedEngine) {
-                ForEach(TTSEngine.allCases, id: \.self) { engine in
-                    Text(engine.rawValue).tag(engine)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .onChange(of: viewModel.selectedEngine) { _, engine in
-                if engine == .elevenLabs {
-                    Task { await viewModel.fetchElevenLabsUserInfo() }
-                }
-            }
-            
-            // MARK: - ElevenLabs Config
-            if viewModel.selectedEngine == .elevenLabs {
-                HStack {
-                    SecureField("ElevenLabs API Key", text: $viewModel.apiKey)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    if viewModel.isFetchingVoices {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 20)
-                    } else {
-                        Button(action: { viewModel.fetchElevenLabsVoices() }) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                        }
-                        .help("Reload Voices & Credits")
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                    .onChange(of: viewModel.selectedEngine) { _, engine in
+                        if engine == .elevenLabs { Task { await viewModel.fetchElevenLabsUserInfo() } }
                     }
-                    
-                    Text(viewModel.creditsDisplayString)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 8)
                 }
-                .padding(.horizontal)
-            }
-            
-            // MARK: - Voice & Speed Controls
-            HStack(spacing: 20) {
-                // Voice Picker
-                HStack {
-                    Image(systemName: "person.wave.2.fill")
-                        .foregroundColor(.secondary)
-                    
+                if viewModel.selectedEngine == .elevenLabs {
+                    SettingRow(label: "API key", detail: viewModel.creditsDisplayString) {
+                        SecureField("ElevenLabs API key", text: $viewModel.apiKey)
+                            .frame(width: 200)
+                        Button("Reload Voices") { viewModel.fetchElevenLabsVoices() }
+                            .disabled(viewModel.isFetchingVoices)
+                    }
+                }
+                SettingRow(label: "Voice") {
                     if viewModel.selectedEngine == .system {
                         Picker("Voice", selection: $viewModel.selectedSystemVoice) {
-                            ForEach(viewModel.availableSystemVoices, id: \.identifier) { voice in
-                                Text(voice.name).tag(Optional(voice))
-                            }
+                            ForEach(viewModel.availableSystemVoices, id: \.identifier) { Text($0.name).tag(Optional($0)) }
                         }
-                        .frame(minWidth: 150)
+                        .labelsHidden()
+                        .frame(width: 200)
                     } else {
                         Picker("Voice", selection: $viewModel.selectedElevenLabsVoice) {
-                            ForEach(viewModel.availableElevenLabsVoices, id: \.voice_id) { voice in
-                                Text(voice.name).tag(Optional(voice))
-                            }
+                            ForEach(viewModel.availableElevenLabsVoices, id: \.voice_id) { Text($0.name).tag(Optional($0)) }
                         }
-                        .frame(minWidth: 150)
+                        .labelsHidden()
+                        .frame(width: 200)
                         .onAppear {
                             if viewModel.availableElevenLabsVoices.isEmpty && !viewModel.apiKey.isEmpty {
                                 viewModel.fetchElevenLabsVoices()
@@ -102,219 +54,109 @@ struct TTSView: View {
                         }
                     }
                 }
-                .padding(8)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(8)
-                
-                // Speed & Volume Controls
-                HStack(spacing: 20) {
-                    // System Speed
-                    if viewModel.selectedEngine == .system {
-                        HStack {
-                            Image(systemName: "speedometer")
-                                .foregroundColor(.secondary)
-                            
-                            Slider(value: $viewModel.speechRate, in: 0.0...1.0)
-                                .frame(width: 80)
-                                .help("Speech Rate")
-                            
-                            Text(String(format: "%.1f", viewModel.speechRate))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundColor(.secondary)
-                                .frame(width: 30)
+                if viewModel.selectedEngine == .system {
+                    SettingRow(label: "Rate") {
+                        Slider(value: $viewModel.speechRate, in: 0.0...1.0).frame(width: 160)
+                        Text(String(format: "%.1f", viewModel.speechRate))
+                            .font(Theme.numerals(12)).foregroundStyle(Theme.amber).frame(width: 36, alignment: .trailing)
+                    }
+                }
+                SettingRow(label: "Volume") {
+                    Slider(value: $viewModel.volume, in: 0.0...1.0)
+                        .frame(width: 160)
+                        .onChange(of: viewModel.volume) { viewModel.updateVolume() }
+                    Text("\(Int(viewModel.volume * 100))%")
+                        .font(Theme.numerals(12)).foregroundStyle(Theme.amber).frame(width: 36, alignment: .trailing)
+                }
+            }
+
+            Panel(title: "Text") {
+                ZStack(alignment: .topLeading) {
+                    if viewModel.text.isEmpty {
+                        Text("Paste text here, or import a file.")
+                            .foregroundStyle(Theme.textDim)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 8)
+                    }
+                    TextEditor(text: $viewModel.text)
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                }
+                .frame(minHeight: 200)
+                .background(Theme.ground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairline))
+
+                HStack(spacing: 8) {
+                    if let source = viewModel.contentSource {
+                        Text("From \(source)").font(.caption).foregroundStyle(Theme.textDim).lineLimit(1)
+                        Button("Forget Source") { viewModel.contentSource = nil }.controlSize(.small)
+                    }
+                    Spacer()
+                    if viewModel.selectedEngine == .elevenLabs {
+                        if viewModel.text.count > 10_000 {
+                            Button("Trim to 10,000 Characters") { viewModel.truncateText() }.controlSize(.small)
                         }
-                        .padding(8)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(8)
+                        Text("\(viewModel.text.count) / 10,000")
+                            .font(Theme.numerals(11))
+                            .foregroundStyle(viewModel.text.count > 10_000 ? Theme.tx : Theme.amber)
                     }
-                    
-                    // Volume Control (Global)
-                    HStack {
-                        Image(systemName: viewModel.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .foregroundColor(.secondary)
-                        
-                        Slider(value: $viewModel.volume, in: 0.0...1.0)
-                            .frame(width: 80)
-                            .onChange(of: viewModel.volume) {
-                                viewModel.updateVolume()
-                            }
-                            .help("Volume")
-                        
-                        Text("\(Int(viewModel.volume * 100))%")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.secondary)
-                            .frame(width: 35)
-                    }
-                    .padding(8)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(8)
                 }
-                
-                Spacer()
-            }
-            
-            // MARK: - Text Input Area
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
-                
-                if viewModel.text.isEmpty {
-                    Text("Paste text here or import a file...")
-                        .foregroundColor(.secondary)
-                        .padding()
-                }
-                
-                TextEditor(text: $viewModel.text)
-                    .font(.body)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(8)
-                    .scrollContentBackground(.hidden) // Remove default background
-                    .background(Color.clear)
-                
-                // Character Count Overlay
-                if viewModel.selectedEngine == .elevenLabs {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            
-                            if viewModel.text.count > 10_000 {
-                                Button("Truncate to Limit") {
-                                    viewModel.truncateText()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.red)
-                                .controlSize(.small)
-                            }
-                            
-                            Text("\(viewModel.text.count) / 10,000")
-                                .font(.caption)
-                                .foregroundColor(viewModel.text.count > 10_000 ? .red : .secondary)
-                                .padding(6)
-                                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor).opacity(0.8)))
+
+                HStack(spacing: 8) {
+                    Button {
+                        if viewModel.isSpeaking {
+                            viewModel.isPaused ? viewModel.resume() : viewModel.pause()
+                        } else {
+                            viewModel.speak()
                         }
-                        .padding(8)
+                    } label: {
+                        Label(viewModel.isSpeaking && !viewModel.isPaused ? "Pause" : (viewModel.isPaused ? "Resume" : "Speak"),
+                              systemImage: viewModel.isSpeaking && !viewModel.isPaused ? "pause.fill" : "play.fill")
                     }
-                }
-            }
-            .frame(maxHeight: .infinity) // Allow expansion
-            .layoutPriority(1) // Ensure it takes available space
-            
-            if let source = viewModel.contentSource {
-                HStack {
-                    Image(systemName: "doc")
-                    Text("Loaded from: \(source)")
-                        .font(.caption)
-                    Button(action: { viewModel.contentSource = nil }) {
-                        Image(systemName: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                }
-                .foregroundColor(.secondary)
-                .padding(.horizontal)
-            }
-            
-            // MARK: - Controls
-            HStack(spacing: 30) {
-                Button(action: {
-                    if viewModel.isSpeaking {
-                         if viewModel.isPaused {
-                             viewModel.resume()
-                         } else {
-                             viewModel.pause()
-                         }
-                    } else {
-                        viewModel.speak()
-                    }
-                }) {
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!canSpeak)
+
+                    Button("Stop") { viewModel.stop() }
+                        .disabled(!viewModel.isSpeaking)
+
                     if viewModel.isDownloadingAudio {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 44, height: 44)
-                    } else {
-                        Image(systemName: viewModel.isSpeaking && !viewModel.isPaused ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 44))
-                            .foregroundColor(.accentColor)
+                        TallyLight(color: Theme.amber, pulsing: true)
+                        Text("Generating audio").foregroundStyle(Theme.textDim)
+                        if viewModel.downloadProgress > 0 {
+                            Text("\(Int(viewModel.downloadProgress * 100))%")
+                                .font(Theme.numerals(12)).foregroundStyle(Theme.amber)
+                        }
                     }
-                }
-                .buttonStyle(.plain)
-                .help(viewModel.isSpeaking && !viewModel.isPaused ? "Pause" : "Speak")
-                .disabled(viewModel.text.isEmpty || viewModel.isDownloadingAudio || (viewModel.selectedEngine == .elevenLabs && viewModel.apiKey.isEmpty))
-                
-                Button(action: { viewModel.stop() }) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 44))
-                        .foregroundColor(viewModel.isSpeaking ? .red : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Stop")
-                .disabled(!viewModel.isSpeaking)
-                
-                Button(action: {
-                    if viewModel.lastAudioData != nil {
-                        showFileExporter = true
-                    } else {
-                        viewModel.errorMessage = "No audio to save. Please play the text first to generate audio."
-                    }
-                }) {
-                    Image(systemName: "square.and.arrow.down.fill")
-                        .font(.system(size: 30))
-                        .foregroundColor(viewModel.lastAudioData == nil ? .secondary : .accentColor)
-                }
-                .buttonStyle(.plain)
-                .help("Save Audio to File")
-                
-                Button(action: { viewModel.text = "" }) {
-                    Image(systemName: "trash.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear Text")
-            }
-            .padding()
-            .fileExporter(
-                isPresented: $showFileExporter,
-                document: AudioDocument(data: viewModel.lastAudioData),
-                contentType: .audio,
-                defaultFilename: "tts_output.mp3"
-            ) { result in
-                switch result {
-                case .success(let url):
-                    viewModel.saveLastAudio(to: url)
-                case .failure(let error):
-                    viewModel.errorMessage = "Export failed: \(error.localizedDescription)"
+                    Spacer()
+                    Button("Import Text File…") { showFileImporter = true }
+                    Button("Save Audio…") { showFileExporter = true }
+                        .disabled(viewModel.lastAudioData == nil)
+                        .help("Play the text first to generate audio")
+                    Button("Clear Text") { viewModel.text = "" }
+                        .disabled(viewModel.text.isEmpty)
                 }
             }
-            
-            if viewModel.isDownloadingAudio {
-                VStack(spacing: 4) {
-                    ProgressView(value: viewModel.selectedEngine == .elevenLabs ? viewModel.downloadProgress : nil)
-                        .progressViewStyle(.linear)
-                        .frame(width: 200)
-                    
-                    Text(viewModel.downloadProgress > 0 ? "Generating Audio (\(Int(viewModel.downloadProgress * 100))%)" : "Generating Audio...")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .transition(.opacity)
-                .padding(.bottom, 10)
-            }
-            
-            Spacer(minLength: 20)
         }
-        .padding()
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.plainText, .json], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first { viewModel.loadText(from: url) }
+            case .failure(let error):
+                LoggerService.shared.debug("File import failed: \(error)")
+            }
+        }
+        .fileExporter(isPresented: $showFileExporter, document: AudioDocument(data: viewModel.lastAudioData),
+                      contentType: .audio, defaultFilename: "tts_output.mp3") { result in
+            switch result {
+            case .success(let url): viewModel.saveLastAudio(to: url)
+            case .failure(let error): viewModel.errorMessage = "Couldn't save the audio: \(error.localizedDescription)"
+            }
+        }
         .alert(item: Binding<AlertError?>(
             get: { viewModel.errorMessage.map { AlertError(message: $0) } },
             set: { _ in viewModel.errorMessage = nil }
         )) { error in
-            Alert(title: Text("Error"), message: Text(error.message), dismissButton: .default(Text("OK")))
+            Alert(title: Text("Voice Error"), message: Text(error.message), dismissButton: .default(Text("OK")))
         }
     }
 }

@@ -1,5 +1,40 @@
 import SwiftUI
 
+/// Main-window sidebar destinations.
+enum SidebarPage: String, CaseIterable, Identifiable {
+    case dictate, files, voice, prompts, system
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dictate: "Dictate"
+        case .files: "Files"
+        case .voice: "Voice"
+        case .prompts: "Prompts"
+        case .system: "System"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .dictate: "mic"
+        case .files: "waveform"
+        case .voice: "speaker.wave.2"
+        case .prompts: "text.quote"
+        case .system: "gearshape"
+        }
+    }
+
+    init(tab: WhisperWrapTab) {
+        switch tab {
+        case .dictation: self = .dictate
+        case .transcribe: self = .files
+        case .tts: self = .voice
+        case .models, .diagnostics: self = .system
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var viewModel: ContentViewModel
     @EnvironmentObject var claudeService: ClaudeService
@@ -11,73 +46,32 @@ struct ContentView: View {
 
     @StateObject private var prefetch = PrefetchManager()
     @StateObject private var ttsViewModel = TTSViewModel()
-    @State private var selectedTab: WhisperWrapTab = .dictation
+    @State private var page: SidebarPage? = .dictate
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            DictationView()
-                .environmentObject(viewModel)
-                .environmentObject(claudeService)
-                .environmentObject(claudePromptManager)
-                .tabItem {
-                    Label("Dictation", systemImage: "mic.fill")
-                }
-                .tag(WhisperWrapTab.dictation)
-
-            TranscriptionView(
-                consoleOutput: $viewModel.consoleOutput,
-                isProcessing: $viewModel.isProcessing,
-                processingStage: $viewModel.processingStage,
-                processingProgress: $viewModel.processingProgress,
-                claudeService: claudeService,
-                claudePromptManager: claudePromptManager,
-                fileClaudeEnabled: $viewModel.fileClaudeEnabled,
-                fileClaudePromptID: $viewModel.fileClaudePromptID,
-                onDrop: { url, model, format, useClaude in
-                    viewModel.transcribe(url: url, model: model, format: format, useClaude: useClaude)
-                },
-                onCancel: {
-                    viewModel.cancelTranscription()
-                }
-            )
-            .tabItem {
-                Label("Transcribe", systemImage: "waveform")
+        NavigationSplitView {
+            List(SidebarPage.allCases, selection: $page) { item in
+                Label(item.title, systemImage: item.symbol).tag(item)
             }
-            .tag(WhisperWrapTab.transcribe)
-
-            TTSView(viewModel: ttsViewModel)
-                .tabItem {
-                    Label("Text to Speech", systemImage: "bubble.left.and.exclamationmark.bubble.right.fill")
-                }
-                .tag(WhisperWrapTab.tts)
-
-            PrefetchModelsView()
-                .environmentObject(prefetch)
-                .tabItem {
-                    Label("Models", systemImage: "server.rack")
-                }
-                .tag(WhisperWrapTab.models)
-
-            DiagnosticsView()
-                .environmentObject(viewModel)
-                .environmentObject(prefetch)
-                .tabItem {
-                    Label("Diagnostics", systemImage: "wrench")
-                }
-                .tag(WhisperWrapTab.diagnostics)
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+        } detail: {
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.ground)
         }
+        .preferredColorScheme(.dark)
+        .tint(Theme.text)
         .onChange(of: viewModel.requestedTab) { _, newTab in
             if let tab = newTab {
-                selectedTab = tab
-                viewModel.requestedTab = nil // Reset after switching
+                page = SidebarPage(tab: tab)
+                viewModel.requestedTab = nil
             }
         }
         .onAppear {
             if let tab = viewModel.requestedTab {
-                selectedTab = tab
+                page = SidebarPage(tab: tab)
                 viewModel.requestedTab = nil
             }
-            // Request permissions on first launch
             let hasPromptedForPermissions = UserDefaults.standard.bool(forKey: "hasPromptedForPermissions")
             if !hasPromptedForPermissions {
                 PermissionsManager.shared.requestAllPermissions()
@@ -90,8 +84,43 @@ struct ContentView: View {
         }
         .navigationTitle("WhisperWrap")
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // Re-check permissions whenever app becomes active (e.g. returning from System Settings)
             PermissionsManager.shared.checkPermissions()
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch page ?? .dictate {
+        case .dictate:
+            DictationView()
+                .environmentObject(viewModel)
+        case .files:
+            TranscriptionView(
+                consoleOutput: $viewModel.consoleOutput,
+                isProcessing: $viewModel.isProcessing,
+                processingStage: $viewModel.processingStage,
+                processingProgress: $viewModel.processingProgress,
+                claudeService: claudeService,
+                claudePromptManager: claudePromptManager,
+                fileClaudeEnabled: $viewModel.fileClaudeEnabled,
+                fileClaudePromptID: $viewModel.fileClaudePromptID,
+                onDrop: { url, model, format, useClaude in
+                    viewModel.transcribe(url: url, model: model, format: format, useClaude: useClaude)
+                },
+                onCancel: { viewModel.cancelTranscription() }
+            )
+        case .voice:
+            TTSView(viewModel: ttsViewModel)
+        case .prompts:
+            PromptsView(claudeService: claudeService, claudePromptManager: claudePromptManager)
+        case .system:
+            Page(title: "System", lede: "Permissions, speech models, and logs.") {
+                PermissionsPanel()
+                PrefetchModelsView()
+                DiagnosticsView()
+            }
+            .environmentObject(viewModel)
+            .environmentObject(prefetch)
         }
     }
 }

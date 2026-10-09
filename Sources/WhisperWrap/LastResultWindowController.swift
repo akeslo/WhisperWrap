@@ -7,37 +7,18 @@ private struct LastResultView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                section(title: "Transcription", text: rawTranscription)
+            VStack(alignment: .leading, spacing: 20) {
+                TakeText(title: "Raw", text: rawTranscription, empty: "Nothing dictated yet.")
                 if !processedOutput.isEmpty {
-                    Divider()
-                    section(title: "AI Output", text: processedOutput)
+                    Divider().overlay(Theme.hairline)
+                    TakeText(title: "Refined", text: processedOutput, empty: "")
                 }
             }
             .padding(20)
         }
         .frame(minWidth: 480, minHeight: 320)
-    }
-
-    @ViewBuilder
-    private func section(title: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                    .font(.headline)
-                Spacer()
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(text, forType: .string)
-                }
-                .disabled(text.isEmpty)
-            }
-            Text(text.isEmpty ? "No transcription yet." : text)
-                .font(.system(.body, design: .default))
-                .foregroundColor(text.isEmpty ? .secondary : .primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        .background(Theme.ground)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -52,7 +33,8 @@ class LastResultWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Last Transcription"
+        window.title = "Last Dictation"
+        window.appearance = NSAppearance(named: .darkAqua)
         window.center()
         window.isReleasedWhenClosed = false
         super.init(window: window)

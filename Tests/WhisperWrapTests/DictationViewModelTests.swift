@@ -2,10 +2,15 @@ import XCTest
 @testable import WhisperWrap
 
 /// Comprehensive test coverage for DictationViewModel.transcribe() — the core post-transcription
-/// logic that handles Claude processing, HUD state management, clipboard operations, and error
+/// logic (paste-first, then on-demand refineLast() via Claude), clipboard operations, and error
 /// detection. Covers 7 decision points across 10 test cases.
 @MainActor
 final class DictationViewModelTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DictationViewModel.keystrokesEnabled = false
+    }
 
     // MARK: - Test 1: Claude Disabled Path
 
@@ -21,8 +26,6 @@ final class DictationViewModelTests: XCTestCase {
 
         let rawText = "hello world"
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = false
         mockContentViewModel.transcriptionResult = rawText
 
         viewModel.transcribe(url: audioURL)
@@ -49,14 +52,13 @@ final class DictationViewModelTests: XCTestCase {
         let rawText = "hello world"
         let claudeOutput = "Hello, World!"
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = rawText
         mockClaudeService.processResult = claudeOutput
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertEqual(viewModel.lastRawTranscription, rawText)
         XCTAssertEqual(viewModel.transcribedText, claudeOutput)
@@ -79,8 +81,6 @@ final class DictationViewModelTests: XCTestCase {
         let rawText = "hello world"
         let errorOutput = "Error: API rate limited"
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = rawText
         mockClaudeService.processResult = errorOutput
@@ -88,6 +88,7 @@ final class DictationViewModelTests: XCTestCase {
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertEqual(viewModel.transcribedText, rawText)
         XCTAssertEqual(viewModel.lastRawTranscription, rawText)
@@ -111,7 +112,6 @@ final class DictationViewModelTests: XCTestCase {
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
 
         viewModel.autoCopy = true
-        viewModel.claudeEnabled = false
         mockContentViewModel.transcriptionResult = rawText
         NSPasteboard.general.clearContents()
 
@@ -139,7 +139,6 @@ final class DictationViewModelTests: XCTestCase {
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
 
         viewModel.autoCopy = false
-        viewModel.claudeEnabled = false
         mockContentViewModel.transcriptionResult = rawText
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(originalClipboard, forType: .string)
@@ -167,7 +166,6 @@ final class DictationViewModelTests: XCTestCase {
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
 
         viewModel.autoCopy = true
-        viewModel.claudeEnabled = false
         // transcribeDictation returns this literal sentinel for a take with no speech
         // (ContentViewModel.transcribeDictation / noSpeechDetectedSentinel).
         mockContentViewModel.transcriptionResult = ContentViewModel.noSpeechDetectedSentinel
@@ -194,13 +192,12 @@ final class DictationViewModelTests: XCTestCase {
         viewModel.contentViewModel = mockContentViewModel
 
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = "   \n\t  "
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertFalse(viewModel.isProcessing)
         XCTAssertFalse(mockClaudeService.wasProcessCalled)
@@ -219,13 +216,12 @@ final class DictationViewModelTests: XCTestCase {
         viewModel.contentViewModel = mockContentViewModel
 
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = ""
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertFalse(mockClaudeService.wasProcessCalled)
     }
@@ -245,14 +241,13 @@ final class DictationViewModelTests: XCTestCase {
         let rawText = "hello world this is a test"
         let claudeOutput = "Hello world, this is a test."
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = rawText
         mockClaudeService.processResult = claudeOutput
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertEqual(viewModel.transcribedText, claudeOutput)
         XCTAssertNotEqual(viewModel.transcribedText, rawText)
@@ -273,8 +268,6 @@ final class DictationViewModelTests: XCTestCase {
         let rawText = "test"
         let errorOutput = "Traceback (most recent call last):\n  File \"test.py\", line 1"
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = rawText
         mockClaudeService.processResult = errorOutput
@@ -282,6 +275,7 @@ final class DictationViewModelTests: XCTestCase {
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertEqual(viewModel.transcribedText, rawText)
         XCTAssertFalse(mockClaudeService.isConnected)
@@ -302,14 +296,13 @@ final class DictationViewModelTests: XCTestCase {
         let rawText = "hi"
         let processedText = "Hello"
         let audioURL = URL(fileURLWithPath: "/tmp/test.wav")
-
-        viewModel.claudeEnabled = true
         viewModel.showHUD = false
         mockContentViewModel.transcriptionResult = rawText
         mockClaudeService.processResult = processedText
 
         viewModel.transcribe(url: audioURL)
         await waitForProcessing(viewModel)
+        await viewModel.refineLast()
 
         XCTAssertEqual(viewModel.lastRawTranscription, rawText)
         XCTAssertEqual(viewModel.transcribedText, processedText)

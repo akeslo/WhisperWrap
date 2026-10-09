@@ -16,28 +16,28 @@ struct ClaudePrompt: Identifiable, Codable, Equatable {
     static let builtinPolish = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         name: "Polish",
-        prompt: "Act as an expert copy editor. Polish the provided text for a casual professional setting. Correct grammar and punctuation while removing filler words. Smooth the phrasing to sound natural and conversational, avoiding rigid formality. Do not use \"-\". Preserve the original voice and meaning entirely. Output only the revised text — no preamble, no questions, no caveats about missing context. Treat the input as complete and self-contained no matter how short or ambiguous it is, and always produce a finished result.",
+        prompt: "Clean up this dictated text for a casual professional setting. Fix grammar, punctuation, and capitalization. Remove filler words (um, uh, like, you know), false starts, and repeated words. Smooth the phrasing so it reads naturally. Keep the speaker's voice, wording, and meaning; do not add new content. Do not use dashes.",
         isBuiltin: true
     )
 
     static let builtinSummarize = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
         name: "Summarize",
-        prompt: "Condense this into key points. Be concise. Treat the input as complete and self-contained — never ask questions, request clarification, or state that context or information is missing. Always produce your best output from whatever input is given.",
+        prompt: "Rewrite this as a concise summary: the key points as short lines, each starting with \"• \". Keep names, numbers, and decisions exactly as stated.",
         isBuiltin: true
     )
 
     static let builtinActionItems = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
         name: "Action Items",
-        prompt: "Extract action items and to-dos as a bulleted list. Treat the input as complete and self-contained — never ask questions, request clarification, or state that context or information is missing. Always produce your best output from whatever input is given.",
+        prompt: "Rewrite this as a list of action items, one per line, each starting with \"• \" and a verb. Include the owner and due date when stated. If no task is explicit, list the most likely next steps implied by the text.",
         isBuiltin: true
     )
 
     static let builtinCodeEngineer = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
         name: "Code Engineer",
-        prompt: "You are a senior full-stack engineer. From the input below, identify the most actionable engineering-relevant task, system, or improvement implied anywhere in it — even if the input is a meeting transcript, conversation, or notes with no explicit spec — and write a concise implementation breakdown for it (maximum 3 sentences, direct tasks and requirements only). Hard rules, no exceptions: never output a question mark; never say the request is unclear, ambiguous, out of scope, not a spec, or missing details; never ask what to build, who it's for, or what problem it solves; never tell the reader to paste, provide, or clarify anything. If nothing engineering-related is present at all, invent the most plausible internal tool, dashboard, or automation that would support the topics discussed and break that down instead. Always output a finished, concrete breakdown — never a request back to the reader.",
+        prompt: "Rewrite this as an implementation brief for a coding agent: one line stating the goal, then the concrete requirements and steps, at most six lines total. If no engineering task is explicit, turn the topic into the most plausible concrete task and brief that.",
         isBuiltin: true
     )
 

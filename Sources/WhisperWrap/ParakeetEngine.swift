@@ -13,6 +13,7 @@ enum DictationEngine: String, CaseIterable, Identifiable {
 final class ParakeetEngine {
     private var manager: AsrManager?
     private var loading: Task<AsrManager, Error>?
+    var isReady: Bool { manager != nil }
 
     func prepare() async throws -> AsrManager {
         if let manager { return manager }

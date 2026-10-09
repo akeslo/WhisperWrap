@@ -4,47 +4,40 @@ struct PrefetchModelsView: View {
     @EnvironmentObject var prefetch: PrefetchManager
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Prefetch Models")
-                .font(.title2)
-                .fontWeight(.bold)
-            Text("Optional: download model weights ahead of time. First use also downloads automatically.")
-                .foregroundColor(.secondary)
-            HStack {
-                Button("Refresh Status") { prefetch.refresh() }
-                Button("Open Cache Folder") { prefetch.openCacheFolder() }
-                Spacer()
-            }
-
+        Panel(title: "Whisper models") {
+            Text("Download weights ahead of time. A model also downloads on first use.")
+                .font(.caption)
+                .foregroundStyle(Theme.textDim)
             ForEach(Model.allCases) { model in
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(model.displayName)
-                        if let size = prefetch.sizes[model] {
-                            Text(size).font(.caption2).foregroundColor(.secondary)
-                        }
+                HStack(spacing: 10) {
+                    Text(model.displayName).foregroundStyle(Theme.text)
+                    if let size = prefetch.sizes[model] {
+                        Text(size).font(Theme.numerals(11)).foregroundStyle(Theme.amber)
                     }
                     Spacer()
                     switch prefetch.statuses[model] ?? .notPrefetched {
                     case .notPrefetched:
-                        Button("Prefetch") { prefetch.prefetch(model) }
+                        Button("Download") { prefetch.prefetch(model) }
                     case .fetching:
-                        ProgressView().frame(width: 80)
+                        TallyLight(color: Theme.amber, pulsing: true)
+                        Text("Downloading").foregroundStyle(Theme.textDim)
                     case .prefetched:
-                        Label("Ready", systemImage: "checkmark.circle.fill").foregroundColor(.green)
+                        TallyLight(color: Theme.landed)
+                        Text("Ready").foregroundStyle(Theme.textDim)
                     case .failed(let msg):
-                        VStack(alignment: .trailing) {
-                            Text("Failed").foregroundColor(.red)
-                            Text(msg).font(.caption2).foregroundColor(.secondary).lineLimit(2)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Button("Retry Download") { prefetch.prefetch(model) }
+                            Text(msg).font(.caption2).foregroundStyle(Theme.textDim).lineLimit(2)
                         }
                     }
                 }
-                .padding(.vertical, 4)
             }
-
-            Spacer()
+            HStack {
+                Button("Refresh Status") { prefetch.refresh() }
+                Button("Show Cache Folder") { prefetch.openCacheFolder() }
+                Spacer()
+            }
         }
-        .padding()
         .onAppear {
             prefetch.refresh()
             prefetch.refreshSizes()

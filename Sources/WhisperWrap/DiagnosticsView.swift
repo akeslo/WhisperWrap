@@ -4,75 +4,42 @@ struct DiagnosticsView: View {
     @EnvironmentObject var viewModel: ContentViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Diagnostics").font(.title2).fontWeight(.bold)
-
-            Group {
-                Label("App Version", systemImage: "info.circle")
-                Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"))")
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundColor(.secondary)
+        Panel(title: "Diagnostics") {
+            SettingRow(label: "Version") {
+                Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "–"))")
+                    .font(Theme.numerals(12)).foregroundStyle(Theme.amber)
             }
-
-            Group {
-                Label("Speech Engine", systemImage: "waveform")
-                Text("WhisperKit (CoreML / Apple Neural Engine) — no setup required")
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundColor(.secondary)
+            SettingRow(label: "Log entries") {
+                Text("\(viewModel.logCount)").font(Theme.numerals(12)).foregroundStyle(Theme.amber)
             }
-
-            Divider()
-
-            Group {
-                Text("Debug Logs").font(.headline)
-                HStack {
-                    Button("Copy to Clipboard") {
-                        let logs = LoggerService.shared.export()
-                        let pasteboard = NSPasteboard.general
-                        pasteboard.clearContents()
-                        pasteboard.setString(logs.isEmpty ? "(no logs captured)" : logs, forType: .string)
-                    }
-
-                    Button("Save to Downloads") {
-                        saveLogs()
-                    }
-
-                    Button("Clear") {
-                        LoggerService.shared.clear()
-                    }
-
-                    Spacer()
-                    Text("\(viewModel.logCount) entries")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            if viewModel.logCount == 0 {
+                Text("No logs yet. Dictate once to generate some.")
+                    .font(.caption).foregroundStyle(Theme.textDim)
+            } else {
+                ScrollView {
+                    Text(viewModel.recentLogs)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(Theme.textDim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(8)
                 }
-
-                if viewModel.logCount == 0 {
-                    Text("No logs captured yet. Start a recording to generate logs.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .italic()
-                } else {
-                    ScrollView {
-                        Text(viewModel.recentLogs)
-                            .font(.system(.caption2, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
-                    .frame(height: 120)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(4)
-                }
+                .frame(height: 140)
+                .background(Theme.ground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
-
-            Spacer()
-
-            Link("Made by Outsource Wisely", destination: URL(string: "https://www.outsourcewisely.com/")!)
-                .font(.footnote)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom)
+            HStack {
+                Button("Copy Logs") {
+                    let logs = LoggerService.shared.export()
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(logs.isEmpty ? "(no logs captured)" : logs, forType: .string)
+                }
+                Button("Save Logs to Downloads") { saveLogs() }
+                Button("Clear Logs") { LoggerService.shared.clear() }
+                Spacer()
+                Link("Outsource Wisely", destination: URL(string: "https://www.outsourcewisely.com/")!)
+                    .font(.caption)
+            }
         }
-        .padding()
     }
 
     private func saveLogs() {

@@ -1,56 +1,28 @@
 import SwiftUI
-import Combine
 
 @MainActor
-class HUDState: ObservableObject {
-    enum HUDStatus {
+final class HUDState: ObservableObject {
+    enum HUDStatus: Equatable {
         case listening
         case transcribing
-        case selectingPrompt
+        /// Raw text is pasted; the HUD is the small Refine pill.
+        case refineOffer
         case processingWithClaude
-        case showingResults
+        case landed
+        case failed(String)
     }
 
-    @Published var audioLevel: Float = 0.0
-    @Published var streamingText: String = ""
-    @Published var phase: Double = 0.0
-    @Published var tick: Int = 0
     @Published var status: HUDStatus = .listening
+    @Published var audioLevel: Float = 0
+    /// One-line note under the status (model loading progress etc.). Empty hides it.
+    @Published var note = ""
+    @Published var recordingStartedAt = Date()
 
-    // Prompt selection state
-    @Published var availablePrompts: [ClaudePrompt] = []
-    @Published var defaultPromptID: UUID? = nil
-    @Published var countdownProgress: Double = 1.0
-    @Published var isEnteringCustomPrompt: Bool = false
-    @Published var customPromptText: String = ""
-
-    // Audio device selection
     @Published var availableDevices: [(id: String, name: String)] = []
     @Published var selectedDeviceID: String?
-    @Published var showingDevicePicker: Bool = false
 
-    // Session-only position (not persisted, resets on app quit)
-    var currentPosition: NSPoint?
-    
-    private var timer: Timer?
-    
-    func startAnimating() {
-        timer?.invalidate()
-        // Slower animation (approx 20 fps) for smoother, less frantic look
-        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
-                // Smaller phase increment for slower wave movement
-                self.phase += 0.2
-                self.tick += 1
-            }
-        }
-    }
-    
-    func stopAnimating() {
-        timer?.invalidate()
-        timer = nil
-        phase = 0.0
-        tick = 0
-    }
+    @Published var prompts: [ClaudePrompt] = []
+    @Published var defaultPromptID: UUID?
+
+    var isPill: Bool { status == .refineOffer }
 }

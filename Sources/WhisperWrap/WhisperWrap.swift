@@ -26,7 +26,7 @@ final class WWNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, 
     ) {
         if response.actionIdentifier == "WW_STOP_RECORDING" {
             Task { @MainActor in
-                if let delegate = NSApp.delegate as? AppDelegate {
+                if let delegate = AppDelegate.shared {
                     delegate.dictationViewModel.stopRecording()
                 }
             }
@@ -37,6 +37,14 @@ final class WWNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, 
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    /// `NSApp.delegate` is SwiftUI's adaptor proxy, not this class, so `as? AppDelegate`
+    /// casts fail. Reach the instance through here instead.
+    static private(set) weak var shared: AppDelegate?
+
+    override init() {
+        super.init()
+        AppDelegate.shared = self
+    }
     // Move ownership of ViewModels here to ensure they exist at launch
     var contentViewModel = ContentViewModel()
     var dictationViewModel = DictationViewModel()
@@ -81,6 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Run permission health check on startup
         Task { await PermissionsManager.shared.runHealthCheck() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { Onboarding.runIfNeeded() }
 
         // Check if app is in ~/Applications
         checkAppLocation()
@@ -312,11 +321,11 @@ struct WhisperWrapApp: App {
                 .environmentObject(appDelegate.dictationViewModel)
                 .environmentObject(appDelegate.claudeService)
                 .environmentObject(appDelegate.claudePromptManager)
-                .frame(minWidth: 600, minHeight: 400)
+                .frame(minWidth: 760, minHeight: 520)
                 .handlesExternalEvents(preferring: Set(arrayLiteral: "main"), allowing: Set(arrayLiteral: "*"))
                 // MenuBarManager setup removed from here as it is now in AppDelegate
         }
-        .defaultSize(width: 800, height: 600)
+        .defaultSize(width: 920, height: 680)
         .handlesExternalEvents(matching: Set(arrayLiteral: "main"))
         .commands {
             // Remove "New Window" command to prevent accidental window creation

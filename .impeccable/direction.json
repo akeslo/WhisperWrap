@@ -1,0 +1,43 @@
+{
+  "title": "Choose the visual world",
+  "question": "The roll assigned Push-to-Talk Readback. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Push-to-Talk Readback",
+      "kicker": "THE ROLL",
+      "lineage": "handheld aviation and field radios: PTT key, TX tally, channel LCD, the controller's readback",
+      "thesis": "You key up, talk, release, and the words land. Refine is the readback: the same message, corrected, in place. Never 'say again'.",
+      "palette": ["#16191a", "#2a302e", "#f2a33a", "#e5483b", "#58c48a", "#e9ece8"],
+      "materials": ["graphite polycarbonate", "amber segment LCD", "tally LEDs"],
+      "viewport": "HUD is a slim graphite capsule under the menu bar: red TX tally + live level while keyed, amber 'decoding', green 'landed', then it shrinks to a 'Readback ⌥⌘R' pill in the corner. Main window: sidebar (Dictate, Files, Voice, Prompts, System), graphite shell, amber numerals for timers/model/latency only.",
+      "risk": "Pushed too far it becomes a radio costume; held to palette, tally states, and amber numerals it stays a native Mac app.",
+      "raised": [
+        {"from": "challenger-transit", "raise": "One strict state vocabulary across HUD, menu bar and window: TX red, decoding amber, landed green, refining amber pulse, never reused for decoration."},
+        {"from": "challenger-feed", "raise": "The HUD shows exactly one thing at a time; each state fully replaces the last."},
+        {"from": "challenger-ikeda", "raise": "Numerals are tabular and measured: durations, latency, model size, nothing decorative."}
+      ]
+    },
+    {
+      "id": "model-pick",
+      "label": "Closed Captions",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "broadcast subtitles and CC line-21 captions",
+      "thesis": "Your speech appears as a caption line, then gets set in place.",
+      "palette": ["#000000", "#ffffff", "#f5d90a"],
+      "materials": ["caption box", "soft black plate"],
+      "viewport": "HUD is a caption bar at screen bottom; refine pill is a yellow caption chip.",
+      "risk": "Familiar: most transcription UIs already lean on caption styling, and a bottom bar fights the Dock and the caret."
+    },
+    {"id": "challenger-transit", "label": "Midnight Transit Diagram", "verdict": "declined", "lineage": "metro line maps", "palette": ["#14213d", "#e63946", "#1d4ed8", "#f2a33a"], "materials": ["enamel"], "case": "Fuses poorly: dictation has no routes or network to map.", "kept": "A disciplined state vocabulary used identically everywhere."},
+    {"id": "challenger-bitmap", "label": "Emigre Bitmap Specimen", "verdict": "declined", "lineage": "Emigre type specimens", "palette": ["#ffffff", "#000000"], "materials": ["pixel type"], "case": "Fuses poorly: a poster face fights a HUD that must stay small and calm.", "kept": "Nothing transferable to a working tool."},
+    {"id": "challenger-feed", "label": "Vertical Feed", "verdict": "declined", "lineage": "full-screen video feeds", "palette": ["#000000", "#ffffff"], "materials": ["scrim"], "case": "Fuses poorly: full-viewport ownership is exactly what a non-obstructive HUD refuses.", "kept": "One state owns the HUD at a time."},
+    {"id": "challenger-botanical", "label": "Botanical Folio", "verdict": "declined", "lineage": "botanical plates", "palette": ["#f3ead8", "#2f5d3a", "#a33327"], "materials": ["engraving"], "case": "Fuses poorly: no audience link to dictation.", "kept": "Fixed scale across stages: the HUD keeps one height through every state."},
+    {"id": "challenger-cassette", "label": "Mixtape J-Card", "verdict": "competitive", "lineage": "cassette inlays", "palette": ["#f7f7f2", "#2b4aa0", "#d0342c"], "materials": ["ballpoint", "inlay stock"], "case": "Holds audience identification (recording, sides, running time) but handwriting hurts clarity in a utility HUD.", "risk": "Reads as nostalgia, not a tool."},
+    {"id": "challenger-ikeda", "label": "Datamatics", "verdict": "declined", "lineage": "Ryoji Ikeda", "palette": ["#000000", "#ffffff"], "materials": ["barcode fields"], "case": "Fuses poorly: strobing black-white fields are hostile in a HUD over your work.", "kept": "Tabular, measured numerals only."}
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "canon": true,
+  "canonCard": {"label": "The category standard", "thesis": "A native macOS utility: system materials, accent blue, SF Symbols, executed impeccably.", "palette": ["#1e1e1e", "#ececec", "#0a84ff"], "materials": ["vibrancy", "SF Symbols"], "viewport": "Sidebar settings window and a translucent HUD like the system dictation bubble.", "risk": "Indistinguishable from every other Mac dictation app by design."},
+  "steer": true
+}
