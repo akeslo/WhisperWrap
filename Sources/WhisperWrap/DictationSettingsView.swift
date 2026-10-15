@@ -72,11 +72,17 @@ struct DictationSettingsView: View {
         }
 
         Panel(title: "Behavior") {
+            SettingRow(label: "Refine every dictation", detail: "Runs the default prompt automatically after each paste") {
+                Toggle("Refine every dictation", isOn: $viewModel.autoRefine).labelsHidden().toggleStyle(.switch)
+            }
             SettingRow(label: "Keep text on clipboard", detail: "Off restores your previous clipboard after pasting") {
                 Toggle("Keep text on clipboard", isOn: $viewModel.autoCopy).labelsHidden().toggleStyle(.switch)
             }
             SettingRow(label: "Show recording HUD") {
                 Toggle("Show recording HUD", isOn: $viewModel.showHUD).labelsHidden().toggleStyle(.switch)
+            }
+            SettingRow(label: "HUD position", detail: "Drag the HUD to move it; it snaps to edges and center") {
+                Button("Restore Default") { HUDWindowController.shared.resetPosition() }
             }
             SettingRow(label: "Launch at login") {
                 Toggle("Launch at login", isOn: $viewModel.launchAtLogin).labelsHidden().toggleStyle(.switch)

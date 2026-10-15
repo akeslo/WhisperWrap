@@ -38,6 +38,12 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
         }
     }
+    /// Run the default Claude prompt on every dictation instead of offering the Refine pill.
+    @Published var autoRefine: Bool = false {
+        didSet {
+            UserDefaults.standard.set(autoRefine, forKey: "autoRefine")
+        }
+    }
     @Published var showHUD: Bool {
         didSet {
             UserDefaults.standard.set(showHUD, forKey: "showHUD")
@@ -138,6 +144,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     override init() {
         self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
         self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
+        self.autoRefine = UserDefaults.standard.bool(forKey: "autoRefine")
         self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
         self.dictationEngine = UserDefaults.standard.string(forKey: "dictationEngine")
             .flatMap(DictationEngine.init(rawValue:)) ?? .whisper
@@ -790,7 +797,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     /// Runs a Claude prompt over the last raw dictation and swaps the result in for the
     /// pasted raw text (Cmd-Z, then paste). Falls back to the default prompt.
-    func refineLast(promptID: UUID? = nil) async {
+    /// `replacePaste: false` means nothing was pasted yet (auto-refine): paste once, no Cmd-Z.
+    func refineLast(promptID: UUID? = nil, replacePaste: Bool = true) async {
         let raw = lastRawTranscription
         guard !isRefining, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let claudeService, let claudePromptManager else { return }
@@ -813,8 +821,10 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             transcribedText = refined
             // ponytail: Cmd-Z assumes the raw paste is still the last edit in the front app;
             // typing after the paste means undo removes that instead. Track AX selection if it bites.
-            Self.undoLastEdit()
-            try? await Task.sleep(nanoseconds: 80_000_000)
+            if replacePaste {
+                Self.undoLastEdit()
+                try? await Task.sleep(nanoseconds: 80_000_000)
+            }
             Self.paste(refined, keepOnClipboard: autoCopy)
             if autoCopy {
                 NSPasteboard.general.clearContents()
@@ -823,6 +833,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             if showHUD { HUDWindowController.shared.flashLanded() }
         case .error, .emptyOutput:
             claudeService.isConnected = false
+            if !replacePaste { Self.paste(raw, keepOnClipboard: autoCopy) }
             if showHUD { HUDWindowController.shared.flashFailure("Refine failed, raw text kept. Check claude login.") }
         }
     }
@@ -880,7 +891,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if self.currentTranscriptionID == runID {
                     self.isProcessing = false
                     self.transcriptionTask = nil
-                    if self.showHUD {
+                    if offerRefine && self.autoRefine {
+                        Task { @MainActor in await self.refineLast(replacePaste: false) }
+                    } else if self.showHUD {
                         Task { @MainActor in
                             if offerRefine {
                                 self.showRefinePill()
@@ -956,7 +969,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 let hasSpeech = text != ContentViewModel.noSpeechDetectedSentinel
                     && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 if hasSpeech {
-                    Self.paste(text, keepOnClipboard: autoCopy)
+                    if !self.autoRefine { Self.paste(text, keepOnClipboard: autoCopy) }
                     offerRefine = true
                 }
                 if let stopAt = self.stopRequestedAt {

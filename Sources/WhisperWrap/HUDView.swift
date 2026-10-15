@@ -32,7 +32,9 @@ struct HUDView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
-                if let subtitle {
+                if state.status == .listening && state.note.isEmpty {
+                    deviceMenu
+                } else if let subtitle {
                     Text(subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textDim)
@@ -51,7 +53,6 @@ struct HUDView: View {
                         .foregroundStyle(Theme.amber)
                         .monospacedDigit()
                 }
-                deviceMenu
             }
 
             Button(action: onClose) {
@@ -82,13 +83,20 @@ struct HUDView: View {
                 }
             }
         } label: {
-            Image(systemName: "mic")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.textDim)
+            HStack(spacing: 3) {
+                Text(selectedDeviceName ?? "Default input")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(Theme.textDim)
+            .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
         .help("Switch microphone")
     }
 

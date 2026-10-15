@@ -16,7 +16,7 @@ struct ClaudePrompt: Identifiable, Codable, Equatable {
     static let builtinPolish = ClaudePrompt(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         name: "Polish",
-        prompt: "Clean up this dictated text for a casual professional setting. Fix grammar, punctuation, and capitalization. Remove filler words (um, uh, like, you know), false starts, and repeated words. Smooth the phrasing so it reads naturally. Keep the speaker's voice, wording, and meaning; do not add new content. Do not use dashes.",
+        prompt: "Clean up this dictated text so I can send it as a casual work message in Teams or a text. Remove filler words (um, uh, like, you know, so, basically, I mean), false starts, and repeated words. Break long run-on sentences into short separate sentences; don't chain ideas together with commas or \"and\". Fix grammar and punctuation only where it helps the message read clearly. Don't worry about capitalization; lowercase is fine. Keep my voice, wording, and meaning. Don't add anything new, don't make it formal, and don't summarize. Don't use dashes of any kind. Output only the cleaned text, with no preamble or quotes.",
         isBuiltin: true
     )
 
