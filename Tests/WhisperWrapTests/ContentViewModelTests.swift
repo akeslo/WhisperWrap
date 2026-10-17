@@ -17,7 +17,7 @@ final class ContentViewModelTests: XCTestCase {
     var viewModel: ContentViewModel!
     var mockClaudeService: ContentMockClaudeService!
     var mockClaudePromptManager: ContentMockClaudePromptManager!
-    var mockTranscriptionEngine: ContentMockWhisperTranscriptionEngine!
+    var mockTranscriptionEngine: ContentMockParakeetEngine!
     var tempDir: URL!
 
     override func setUp() async throws {
@@ -28,7 +28,7 @@ final class ContentViewModelTests: XCTestCase {
         // documented default (ClaudePrompt.builtinPolish.id) instead of whatever a previous
         // test happened to leave behind.
         UserDefaults.standard.removeObject(forKey: "fileClaudePromptID")
-        mockTranscriptionEngine = ContentMockWhisperTranscriptionEngine()
+        mockTranscriptionEngine = ContentMockParakeetEngine()
         viewModel = ContentViewModel(transcriptionEngine: mockTranscriptionEngine)
         mockClaudeService = ContentMockClaudeService()
         mockClaudePromptManager = ContentMockClaudePromptManager()
@@ -61,7 +61,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: false
         )
@@ -91,7 +90,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: true
         )
@@ -117,7 +115,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: true
         )
@@ -157,7 +154,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: true
         )
@@ -195,7 +191,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: true
         )
@@ -230,7 +225,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: true
         )
@@ -267,7 +261,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: true
         )
@@ -298,8 +291,7 @@ final class ContentViewModelTests: XCTestCase {
         let processTask = Task {
             await runProcessAudio(
                 fileURL: audioURL,
-                model: .base,
-                format: "txt",
+                    format: "txt",
                 useClaude: true
             )
         }
@@ -334,8 +326,7 @@ final class ContentViewModelTests: XCTestCase {
         let processTask = Task {
             await runProcessAudio(
                 fileURL: audioURL,
-                model: .base,
-                format: "txt",
+                    format: "txt",
                 useClaude: true
             )
         }
@@ -367,7 +358,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: false
         )
@@ -396,7 +386,6 @@ final class ContentViewModelTests: XCTestCase {
         // When
         await runProcessAudio(
             fileURL: audioURL,
-            model: .base,
             format: "txt",
             useClaude: false
         )
@@ -426,8 +415,7 @@ final class ContentViewModelTests: XCTestCase {
             // When
             await runProcessAudio(
                 fileURL: audioURL,
-                model: .base,
-                format: format,
+                    format: format,
                 useClaude: false
             )
 
@@ -450,11 +438,10 @@ final class ContentViewModelTests: XCTestCase {
 
     private func runProcessAudio(
         fileURL: URL,
-        model: Model,
         format: String,
         useClaude: Bool
     ) async {
-        viewModel.transcribe(url: fileURL, model: model, format: format, useClaude: useClaude)
+        viewModel.transcribe(url: fileURL, format: format, useClaude: useClaude)
 
         // transcribe() spawns its work in a new Task and returns immediately, so
         // isProcessing may not have flipped true yet. Yield once to let that Task
@@ -472,15 +459,10 @@ final class ContentViewModelTests: XCTestCase {
 // MARK: - Mock Services
 
 @MainActor
-class ContentMockWhisperTranscriptionEngine: WhisperTranscriptionEngine {
+class ContentMockParakeetEngine: ParakeetEngine {
     var nextTranscription: String = ""
 
-    override func transcribeFormatted(
-        audioURL: URL,
-        model: Model,
-        format: String,
-        onProgress: ((Double) -> Void)? = nil
-    ) async throws -> String {
+    override func transcribeFormatted(audioURL: URL, format: String) async throws -> String {
         return nextTranscription
     }
 }

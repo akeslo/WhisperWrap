@@ -5,6 +5,9 @@ APP_NAME="WhisperWrap"
 OUTPUT_DIR="."
 APP_BUNDLE="${OUTPUT_DIR}/${APP_NAME}.app"
 EXECUTABLE_NAME="WhisperWrap"
+VERSION="${VERSION:-1.1}"
+BUILD_NUMBER="$(git rev-list --count HEAD)"
+SIGN_IDENTITY="Developer ID Application: Outsource Wisely LLC (MNJ22JRCB8)"
 ICON_SOURCE="Sources/WhisperWrap/Resources/AppIcon.appiconset/icon_1024x1024.png"
 
 # Build
@@ -22,10 +25,13 @@ echo "Creating Bundle Structure..."
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS"
 mkdir -p "${APP_BUNDLE}/Contents/Resources"
+mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
 
 # Copy Executable
 echo "Copying Executable..."
 cp ".build/release/${EXECUTABLE_NAME}" "${APP_BUNDLE}/Contents/MacOS/"
+ditto ".build/release/Sparkle.framework" "${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BUNDLE}/Contents/MacOS/${EXECUTABLE_NAME}" 2>/dev/null || true
 
 # Copy Uninstall Script
 echo "Copying Uninstall Script..."
@@ -86,9 +92,15 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <key>CFBundleName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/akeslo/WhisperWrap/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>dTKkB+OrdfD/zFbY1cIwwhY5K7nQdBZ3WO/Qdng8tyw=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>
@@ -104,8 +116,16 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# Code signing
+# Code signing: Developer ID + hardened runtime, inside-out (no --deep) so Sparkle's XPC helpers keep their own signatures.
 echo "Code signing..."
-codesign --force --deep --sign - "$APP_BUNDLE"
+SPARKLE="${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+SIGN=(codesign --force --timestamp --options runtime --sign "$SIGN_IDENTITY")
+"${SIGN[@]}" "$SPARKLE/Versions/B/XPCServices/Installer.xpc"
+"${SIGN[@]}" --preserve-metadata=entitlements "$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
+"${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
+"${SIGN[@]}" "$SPARKLE/Versions/B/Updater.app"
+"${SIGN[@]}" "$SPARKLE"
+"${SIGN[@]}" --entitlements WhisperWrap.entitlements "$APP_BUNDLE" || exit 1
+codesign --verify --strict --deep "$APP_BUNDLE" || exit 1
 
 echo "App Bundle created at ${APP_BUNDLE}"

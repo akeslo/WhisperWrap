@@ -19,8 +19,6 @@ enum WhisperWrapTab: Int {
 
 @MainActor
 class ContentViewModel: ObservableObject {
-    // No more whisperInstalled / isInstalling / isCheckingEnv
-    // WhisperKit downloads models on first use automatically
     @Published var consoleOutput: String = ""
     @Published var isProcessing: Bool = false
     @Published var processingStage: String = ""
@@ -45,7 +43,7 @@ class ContentViewModel: ObservableObject {
     var claudeService: ClaudeService?
     var claudePromptManager: ClaudePromptManager?
 
-    let transcriptionEngine: WhisperTranscriptionEngine
+    let parakeetEngine: ParakeetEngine
     private var processingTask: Task<Void, Never>?
 
     // Always ready — no Python setup needed
@@ -58,8 +56,8 @@ class ContentViewModel: ObservableObject {
         return recent.joined(separator: "\n")
     }
 
-    init(transcriptionEngine: WhisperTranscriptionEngine? = nil) {
-        self.transcriptionEngine = transcriptionEngine ?? WhisperTranscriptionEngine()
+    init(transcriptionEngine: ParakeetEngine? = nil) {
+        self.parakeetEngine = transcriptionEngine ?? ParakeetEngine()
         self.fileClaudeEnabled = UserDefaults.standard.bool(forKey: "fileClaudeEnabled")
         if let savedID = UserDefaults.standard.string(forKey: "fileClaudePromptID"),
            let uuid = UUID(uuidString: savedID) {
@@ -70,16 +68,12 @@ class ContentViewModel: ObservableObject {
         cleanupOldTempFiles()
     }
 
-    func transcribe(url: URL, model: Model, format: String, useClaude: Bool) {
-        processAudio(fileURL: url, model: model, format: format, useClaude: useClaude)
+    func transcribe(url: URL, format: String, useClaude: Bool) {
+        processAudio(fileURL: url, format: format, useClaude: useClaude)
     }
 
-    let parakeetEngine = ParakeetEngine()
-
-    func transcribeDictation(audioURL: URL, model: Model, engine: DictationEngine = .whisper) async throws -> String {
-        let text = engine == .parakeet
-            ? try await parakeetEngine.transcribe(audioURL: audioURL)
-            : try await transcriptionEngine.transcribeToText(audioURL: audioURL, model: model, onProgress: nil)
+    func transcribeDictation(audioURL: URL) async throws -> String {
+        let text = try await parakeetEngine.transcribe(audioURL: audioURL)
         try? FileManager.default.removeItem(at: audioURL)
 
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -101,7 +95,7 @@ class ContentViewModel: ObservableObject {
         consoleOutput += "\n❌ Transcription cancelled\n"
     }
 
-    private func processAudio(fileURL: URL, model: Model, format: String, useClaude: Bool) {
+    private func processAudio(fileURL: URL, format: String, useClaude: Bool) {
         processingTask = Task {
             isProcessing = true
             consoleOutput = ""
@@ -126,19 +120,14 @@ class ContentViewModel: ObservableObject {
                 consoleOutput += "🎵 Format: \(fileExtension.uppercased())\n\n"
 
                 processingStage = "Transcribing..."
-                consoleOutput += "🎙️ Model: \(model.displayName)\n"
+                consoleOutput += "🎙️ Model: Parakeet TDT v3\n"
                 consoleOutput += "📄 Output: \(format.uppercased())\n"
                 consoleOutput += "🚀 Acceleration: CoreML / Apple Neural Engine\n\n"
 
-                let transcribedText = try await transcriptionEngine.transcribeFormatted(
+                let transcribedText = try await parakeetEngine.transcribeFormatted(
                     audioURL: fileURL,
-                    model: model,
                     format: format
-                ) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        self?.processingProgress = 0.1 + progress * 0.8
-                    }
-                }
+                )
 
                 if Task.isCancelled { return }
 

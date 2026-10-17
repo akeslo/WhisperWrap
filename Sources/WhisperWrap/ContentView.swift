@@ -44,7 +44,6 @@ struct ContentView: View {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
-    @StateObject private var prefetch = PrefetchManager()
     @StateObject private var ttsViewModel = TTSViewModel()
     @State private var page: SidebarPage? = .dictate
 
@@ -79,8 +78,6 @@ struct ContentView: View {
                 UserDefaults.standard.set(true, forKey: "hasPromptedForPermissions")
             }
             PermissionsManager.shared.checkPermissions()
-            prefetch.refresh()
-            prefetch.refreshSizes()
         }
         .navigationTitle("WhisperWrap")
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -104,8 +101,8 @@ struct ContentView: View {
                 claudePromptManager: claudePromptManager,
                 fileClaudeEnabled: $viewModel.fileClaudeEnabled,
                 fileClaudePromptID: $viewModel.fileClaudePromptID,
-                onDrop: { url, model, format, useClaude in
-                    viewModel.transcribe(url: url, model: model, format: format, useClaude: useClaude)
+                onDrop: { url, format, useClaude in
+                    viewModel.transcribe(url: url, format: format, useClaude: useClaude)
                 },
                 onCancel: { viewModel.cancelTranscription() }
             )
@@ -114,13 +111,11 @@ struct ContentView: View {
         case .prompts:
             PromptsView(claudeService: claudeService, claudePromptManager: claudePromptManager)
         case .system:
-            Page(title: "System", lede: "Permissions, speech models, and logs.") {
+            Page(title: "System", lede: "Permissions and logs.") {
                 PermissionsPanel()
-                PrefetchModelsView()
                 DiagnosticsView()
             }
             .environmentObject(viewModel)
-            .environmentObject(prefetch)
         }
     }
 }

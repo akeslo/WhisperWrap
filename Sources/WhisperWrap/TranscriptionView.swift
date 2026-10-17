@@ -9,9 +9,6 @@ struct TranscriptionView: View {
     @ObservedObject var claudePromptManager: ClaudePromptManager
     @Binding var fileClaudeEnabled: Bool
     @Binding var fileClaudePromptID: UUID?
-    // Persisted so the file-transcription model choice survives app restarts (U20) —
-    // previously a plain @State that silently reset to .base every launch.
-    @AppStorage("fileTranscriptionModel") private var selectedModel: Model = .base
     @State private var selectedFormat: String = "txt"
     @State private var isTargeted: Bool = false
     @State private var droppedFileName: String?
@@ -22,19 +19,12 @@ struct TranscriptionView: View {
     @State private var showClaudeSetupAlert: Bool = false
 
     let formats = ["txt", "srt", "json"]
-    let onDrop: (URL, Model, String, Bool) -> Void
+    let onDrop: (URL, String, Bool) -> Void
     var onCancel: (() -> Void)?
 
     var body: some View {
         Page(title: "Files", lede: "Drop an audio file to transcribe it to text, subtitles, or JSON.") {
             Panel(title: "Output") {
-                SettingRow(label: "Whisper model") {
-                    Picker("Whisper model", selection: $selectedModel) {
-                        ForEach(Model.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .labelsHidden()
-                    .frame(width: 200)
-                }
                 SettingRow(label: "Format") {
                     Picker("Format", selection: $selectedFormat) {
                         ForEach(formats, id: \.self) { Text($0.uppercased()).tag($0) }
@@ -170,12 +160,12 @@ struct TranscriptionView: View {
                         alert.addButton(withTitle: "Cancel")
                         let response = alert.runModal()
                         if response == .alertFirstButtonReturn {
-                            onDrop(url, selectedModel, selectedFormat, true)
+                            onDrop(url, selectedFormat, true)
                         } else if response == .alertSecondButtonReturn {
-                            onDrop(url, selectedModel, selectedFormat, false)
+                            onDrop(url, selectedFormat, false)
                         }
                     } else {
-                        onDrop(url, selectedModel, selectedFormat, false)
+                        onDrop(url, selectedFormat, false)
                     }
                 }
             }

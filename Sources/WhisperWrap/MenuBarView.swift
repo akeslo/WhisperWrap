@@ -56,6 +56,10 @@ struct MenuBarView: View {
             HStack {
                 Button("Open WhisperWrap") { openMainApp() }
                 Spacer()
+                if let updater = AppDelegate.shared?.updaterController {
+                    Button("Check for Updates…") { updater.checkForUpdates(nil) }
+                    Spacer()
+                }
                 Button("Quit") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")
             }

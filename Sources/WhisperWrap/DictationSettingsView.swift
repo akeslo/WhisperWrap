@@ -19,23 +19,6 @@ struct DictationSettingsView: View {
         }
 
         Panel(title: "Speech") {
-            SettingRow(label: "Engine") {
-                Picker("Engine", selection: $viewModel.dictationEngine) {
-                    ForEach(DictationEngine.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-            }
-            if viewModel.dictationEngine == .whisper {
-                SettingRow(label: "Whisper model") {
-                    Picker("Whisper model", selection: $viewModel.selectedModel) {
-                        ForEach(Model.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .labelsHidden()
-                    .frame(width: 200)
-                }
-            }
             SettingRow(label: "Microphone") {
                 Picker("Microphone", selection: $viewModel.selectedAudioDeviceID) {
                     ForEach(viewModel.availableAudioDevices, id: \.id) { device in

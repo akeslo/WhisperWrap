@@ -344,7 +344,7 @@ class MockClaudeService: ClaudeService {
 class MockContentViewModel: ContentViewModel {
     var transcriptionResult: String = ""
 
-    override func transcribeDictation(audioURL: URL, model: Model, engine: DictationEngine) async throws -> String {
+    override func transcribeDictation(audioURL: URL) async throws -> String {
         return transcriptionResult
     }
 }

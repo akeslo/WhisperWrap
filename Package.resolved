@@ -1,5 +1,5 @@
 {
-  "originHash" : "a926ff3c1041bcf0c3a0fbe043a70e9ac56c8da515d8828d2a4c4fd8d4d75e8f",
+  "originHash" : "30cbee397e49dd5e9ddb5b506a6f4dbef0bdcff67d4447b14c10872574b07f65",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -11,21 +11,12 @@
       }
     },
     {
-      "identity" : "swift-argument-parser",
+      "identity" : "sparkle",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
-        "revision" : "ca37474853a4b5f59a22c74bfdd449b1f6bc4cc2",
-        "version" : "1.8.1"
-      }
-    },
-    {
-      "identity" : "whisperkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/argmaxinc/WhisperKit.git",
-      "state" : {
-        "revision" : "25c62997041c134b03ca82731ce2f6fd2cae1eb9",
-        "version" : "1.0.0"
+        "revision" : "eef1a539a373c1f1a320624b1130fc5de7b2e100",
+        "version" : "2.10.0"
       }
     }
   ],

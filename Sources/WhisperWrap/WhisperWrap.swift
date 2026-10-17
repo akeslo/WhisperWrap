@@ -5,6 +5,7 @@ import Combine
 import SwiftUI
 import AppKit
 import UserNotifications
+import Sparkle
 
 final class WWNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = WWNotificationDelegate()
@@ -50,6 +51,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var dictationViewModel = DictationViewModel()
     let claudeService = ClaudeService()
     let claudePromptManager = ClaudePromptManager()
+    /// nil under `swift run` (no bundle → no Info.plist feed/key for Sparkle).
+    private(set) var updaterController: SPUStandardUpdaterController?
     
     // Flag to control whether the main window should be shown
     var shouldShowMainWindow = false
@@ -63,6 +66,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentViewModel.claudeService = claudeService
         contentViewModel.claudePromptManager = claudePromptManager
         dictationViewModel.prewarmModel()
+
+        if Bundle.main.bundleIdentifier != nil {
+            updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        }
 
         // Notification setup — UNUserNotificationCenter requires a proper .app bundle;
         // skip when running via `swift run` (no bundle ID).
@@ -109,8 +116,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         
-        // WhisperKit needs no setup — stay hidden at launch unless manually opened
-        logToFile("Startup: WhisperKit ready, staying hidden")
+        // Stay hidden at launch unless manually opened
+        logToFile("Startup: staying hidden")
 
         // Force close check on launch
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
