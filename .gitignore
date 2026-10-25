@@ -11,3 +11,5 @@ WhisperWrap.app/
 build_app.sh
 CLAUDE.local.md
 dist/
+.claude/
+.impeccable/
