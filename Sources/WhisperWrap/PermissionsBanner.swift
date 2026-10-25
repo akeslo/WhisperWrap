@@ -35,7 +35,8 @@ struct PermissionsBanner: View {
             .task {
                 // System Settings changes don't notify us; poll while the banner is up.
                 while !Task.isCancelled {
-                    let result = await PermissionsManager.shared.runHealthCheck()
+                    // No live mic probe here: it lights the menu-bar mic indicator every second.
+                    let result = await PermissionsManager.shared.runHealthCheck(probeMicrophone: false)
                     if result.microphone == .healthy && result.accessibility == .healthy { break }
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
@@ -55,6 +56,10 @@ enum Onboarding {
 
     @MainActor static func runIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: key) else { return }
+        // Grants made from a download/disk-image copy confuse the later /Applications copy;
+        // wait until the app is installed (the move prompt handles that first).
+        let url = Bundle.main.bundleURL
+        if AppMover.isTranslocated(url) || AppMover.isOnMountedVolume(url) { return }
         UserDefaults.standard.set(true, forKey: key)
         PermissionsManager.shared.requestAllPermissions()
         if !PermissionsManager.shared.isAccessibilityTrusted() {

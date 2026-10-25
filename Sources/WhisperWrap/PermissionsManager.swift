@@ -58,8 +58,15 @@ final class PermissionsManager: ObservableObject {
     // MARK: - Full live-probe health check (async, call on startup + app activation)
 
     @discardableResult
-    func runHealthCheck() async -> HealthCheckResult {
-        let micStatus = await checkMicrophoneLive()
+    func runHealthCheck(probeMicrophone: Bool = true) async -> HealthCheckResult {
+        var micStatus: PermissionStatus
+        if probeMicrophone {
+            micStatus = await checkMicrophoneLive()
+        } else {
+            micStatus = Self.status(for: AVCaptureDevice.authorizationStatus(for: .audio))
+            // Keep a known "broken" verdict from the last live probe instead of masking it.
+            if micStatus == .healthy, healthResult?.microphone == .broken { micStatus = .broken }
+        }
         let axStatus = checkAccessibilityLive()
         let result = HealthCheckResult(microphone: micStatus, accessibility: axStatus)
         healthResult = result
@@ -71,14 +78,17 @@ final class PermissionsManager: ObservableObject {
 
     // MARK: - Microphone live probe
 
-    private func checkMicrophoneLive() async -> PermissionStatus {
-        let authStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-        switch authStatus {
+    private static func status(for auth: AVAuthorizationStatus) -> PermissionStatus {
+        switch auth {
         case .notDetermined: return .notDetermined
-        case .denied, .restricted: return .denied
-        case .authorized: break
-        @unknown default: return .denied
+        case .authorized: return .healthy
+        default: return .denied
         }
+    }
+
+    private func checkMicrophoneLive() async -> PermissionStatus {
+        let s = Self.status(for: AVCaptureDevice.authorizationStatus(for: .audio))
+        guard s == .healthy else { return s }
         let probeSucceeds = await probeMicrophone()
         return probeSucceeds ? .healthy : .broken
     }
