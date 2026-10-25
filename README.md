@@ -13,10 +13,10 @@ WhisperWrap is a powerful macOS application that provides local, privacy-focused
 
 ## Installation
 
-1.  Download the latest release from the [Releases Page](https://github.com/akeslo/WhisperWrap/releases).
-2.  Unzip `WhisperWrap.zip` if needed.
-3.  Move `WhisperWrap.app` to your Applications folder.
-4.  Open the app. On first launch, the Parakeet model will be downloaded automatically.
+1.  Download the latest `WhisperWrap.dmg` from the [Releases Page](https://github.com/akeslo/WhisperWrap/releases).
+2.  Open the DMG.
+3.  Drag `WhisperWrap` to the Applications folder.
+4.  Open WhisperWrap from Applications. On first launch, the Parakeet model will be downloaded automatically.
 
 ## Usage
 
