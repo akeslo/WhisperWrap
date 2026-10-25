@@ -138,30 +138,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - App Location Check
 
     private func checkAppLocation() {
-        let bundlePath = Bundle.main.bundlePath
-        // Already in /Applications
-        if bundlePath.hasPrefix("/Applications") { return }
+        let bundleURL = Bundle.main.bundleURL
+        if AppMover.isInApplicationsFolder(bundleURL) { return }
 
-        // Don't nag if user already dismissed
-        if UserDefaults.standard.bool(forKey: "dismissedAppLocationPrompt") { return }
-
-        // Don't prompt during development builds from Xcode or swift build
+        // Development builds from swift build / Xcode.
+        let bundlePath = bundleURL.path
         if bundlePath.contains(".build/") || bundlePath.contains("DerivedData") { return }
 
+        // A translocated or disk-image copy can't update itself, so always offer the move there.
+        let mustMove = AppMover.isTranslocated(bundleURL) || AppMover.isOnMountedVolume(bundleURL)
+        if !mustMove && UserDefaults.standard.bool(forKey: "dismissedAppLocationPrompt") { return }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.showMoveToApplicationsAlert()
+            self?.showMoveToApplicationsAlert(allowDontAsk: !mustMove)
         }
     }
 
-    private func showMoveToApplicationsAlert() {
+    private func showMoveToApplicationsAlert(allowDontAsk: Bool) {
         let alert = NSAlert()
         alert.messageText = "Move to Applications?"
-        alert.informativeText = "WhisperWrap is running from:\n\(Bundle.main.bundlePath)\n\nWould you like to move it to /Applications for easier access and updates?"
+        alert.informativeText = "WhisperWrap needs to be in your Applications folder to keep permissions and install updates.\n\nIf moving fails, quit WhisperWrap and drag it into Applications in Finder."
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Move to /Applications")
+        alert.addButton(withTitle: "Move to Applications")
         alert.addButton(withTitle: "Not Now")
-        alert.addButton(withTitle: "Don't Ask Again")
+        if allowDontAsk { alert.addButton(withTitle: "Don't Ask Again") }
 
+        NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
         switch response {
         case .alertFirstButtonReturn:
@@ -174,68 +176,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func moveToApplicationsFolder() {
-        let fileManager = FileManager.default
+        let running = Bundle.main.bundleURL
+        // Copy from the real download location, not the read-only translocation mount.
+        let original = AppMover.isTranslocated(running) ? AppMover.originalURL(forTranslocated: running) : running
+        let source = original ?? running
         let appsDir = URL(fileURLWithPath: "/Applications")
-        let source = URL(fileURLWithPath: Bundle.main.bundlePath)
-        let appName = source.lastPathComponent
-        let destination = appsDir.appendingPathComponent(appName)
+        logToFile("Move: running=\(running.path) source=\(source.path)")
 
-        logToFile("Move: source=\(source.path) dest=\(destination.path)")
-        logToFile("Move: source exists=\(fileManager.fileExists(atPath: source.path)) isDir=\(source.hasDirectoryPath)")
-
-        // Verify /Applications exists
-        guard fileManager.fileExists(atPath: appsDir.path) else {
-            logToFile("Move: /Applications does not exist")
-            showMoveError("/Applications folder not found")
-            return
-        }
-
-        // Remove existing copy at destination
-        if fileManager.fileExists(atPath: destination.path) {
-            logToFile("Move: removing existing at destination")
-            do {
-                try fileManager.removeItem(at: destination)
-            } catch {
-                logToFile("Move: FAILED to remove existing: \(error)")
-                showMoveError("Could not replace existing app: \(error.localizedDescription)")
-                return
-            }
-        }
-
-        // Copy to ~/Applications
+        let destination: URL
         do {
-            try fileManager.copyItem(at: source, to: destination)
-            logToFile("Move: copy succeeded, exists at dest=\(fileManager.fileExists(atPath: destination.path))")
+            if FileManager.default.isWritableFile(atPath: appsDir.path) {
+                destination = try AppMover.install(from: source, into: appsDir)
+            } else {
+                destination = try AppMover.installWithAdminPrivileges(from: source, into: appsDir)
+            }
         } catch {
-            logToFile("Move: FAILED to copy: \(error)")
-            showMoveError("Could not move app: \(error.localizedDescription)")
+            logToFile("Move: FAILED: \(error)")
+            showMoveError("\(error.localizedDescription)\n\nQuit WhisperWrap and drag it into the Applications folder in Finder instead.")
             return
         }
+        logToFile("Move: installed and verified at \(destination.path)")
 
-        // Relaunch from new location using a fully detached process. The old code built the
-        // shell command by interpolating both paths directly into a script string; this passes
-        // them as literal argv elements instead ($1/$2), so a path segment can never be
-        // interpreted as shell syntax (A-SEC-4). Sequencing (sleep, then remove, then open)
-        // still needs a shell — that part is unchanged and not the injection risk.
-        logToFile("Move: attempting relaunch from \(destination.path)")
+        // Remove the downloaded copy only when we know its real path and it isn't on a disk image.
+        let leftover = (original != nil && !AppMover.isOnMountedVolume(source)) ? source.path : ""
+        // Wait for this process to exit, then open the verified copy, then clean up.
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = [
-            "/bin/sh", "-c", "sleep 1 && rm -rf \"$1\" && open \"$2\"", "_",
-            source.path, destination.path,
+            "-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$2\"; [ -n \"$3\" ] && rm -rf \"$3\"; exit 0",
+            "_", String(ProcessInfo.processInfo.processIdentifier), destination.path, leftover,
         ]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        task.qualityOfService = .background
         do {
             try task.run()
-            logToFile("Move: detached relaunch started, terminating current instance")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                NSApp.terminate(nil)
-            }
+            NSApp.terminate(nil)
         } catch {
-            logToFile("Move: FAILED to launch relaunch script: \(error)")
-            showMoveError("Could not relaunch app: \(error.localizedDescription)")
+            logToFile("Move: FAILED to launch relaunch helper: \(error)")
+            showMoveError("WhisperWrap was copied to Applications but couldn't relaunch. Quit it and open WhisperWrap from Applications.")
         }
     }
 
