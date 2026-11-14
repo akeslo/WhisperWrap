@@ -41,6 +41,19 @@ final class DictationViewModelTests: XCTestCase {
         testBoard.releaseGlobally()
     }
 
+    // MARK: - Failure with the HUD off
+
+    func testFailureWithHUDOffRaisesAlert() {
+        let viewModel = DictationViewModel()
+        let savedShowHUD = viewModel.showHUD
+        defer { viewModel.showHUD = savedShowHUD }
+        viewModel.showHUD = false
+
+        viewModel.presentRecordingFailure("x")
+
+        XCTAssertEqual(viewModel.activeAlert?.id, 2)
+    }
+
     // MARK: - Test 1: Claude Disabled Path
 
     func testTranscribeWithClaudeDisabled_ReturnsRawTranscriptionOnly() async throws {

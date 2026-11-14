@@ -95,6 +95,8 @@ struct MenuBarView: View {
                     }),
                     secondaryButton: .cancel()
                 )
+            case .failure(let msg):
+                return Alert(title: Text("Dictation failed"), message: Text(msg))
             }
         }
     }

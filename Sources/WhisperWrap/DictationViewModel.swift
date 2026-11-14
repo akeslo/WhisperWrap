@@ -77,11 +77,13 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     enum ActiveAlert: Identifiable {
         case accessibility
         case microphoneDenied
+        case failure(String)
 
         var id: Int {
             switch self {
             case .accessibility: return 0
             case .microphoneDenied: return 1
+            case .failure: return 2
             }
         }
     }
@@ -620,7 +622,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Surface a recording-start failure to the user. Without this the hotkey press
     /// produces no HUD, no alert and no recording — a completely silent failure that
     /// only ever reached the debug log.
-    private func presentRecordingFailure(_ message: String) {
+    func presentRecordingFailure(_ message: String) {
         LoggerService.shared.debug("Recording failed: \(message)")
         isRecording = false
         isProcessing = false
@@ -629,6 +631,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
         if showHUD {
             HUDWindowController.shared.flashFailure(message)
+        } else {
+            activeAlert = .failure(message)
         }
     }
     
@@ -823,7 +827,11 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         case .error, .emptyOutput:
             claudeService.isConnected = false
             if !replacePaste { deliver(raw) }
-            if showHUD { HUDWindowController.shared.flashFailure("Refine failed, raw text kept. Check claude login.") }
+            if showHUD {
+                HUDWindowController.shared.flashFailure("Refine failed, raw text kept. Check claude login.")
+            } else {
+                activeAlert = .failure("Refine failed, raw text kept. Check claude login.")
+            }
         }
     }
 
@@ -959,6 +967,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if self.showHUD {
                     HUDWindowController.shared.flashFailure("Transcription failed: \(msg)")
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
+                } else {
+                    self.activeAlert = .failure("Transcription failed: \(msg)")
                 }
             }
         }
