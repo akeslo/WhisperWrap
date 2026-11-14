@@ -1,5 +1,7 @@
 # WhisperWrap — Deferred Findings — 2026-08-23
 
+**Status-table addendum (2026-11-14, plan sweep 2026-11-13):** status cells re-synced with main. Rows fixed by the sweep (PRs #9-#20) or by earlier commits are DONE with their commit; rows no longer worth doing are EXCLUDED with the reason. The remaining DEFERRED rows still stand.
+
 **Addendum (2026-08-31):** several items named below as deferred/not-reached have since been
 fixed by later autonomous commits — R2, R4 (timeout half), R8/U19 (overwrite half), R9/A-SEC-6,
 A-SEC-3, A-SEC-4, A-SLOP-4 (ClaudePrompt half), A-SLOP-11, and U7. See `REMEDIATION_PLAN.md`
