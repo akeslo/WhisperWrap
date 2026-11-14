@@ -66,52 +66,6 @@ if [ $? -eq 0 ]; then echo "   ✅ Accessibility permissions reset"; else echo "
 
 tccutil reset AppleEvents "$BUNDLE_ID" 2>/dev/null
 
-# If tccutil didn't work, try direct database manipulation
-echo "   🔧 Attempting direct TCC database cleanup..."
-if command -v sqlite3 &> /dev/null; then
-    TCC_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-    if [ -f "$TCC_DB" ]; then
-        # Check if database is writable
-        if [ ! -w "$TCC_DB" ]; then
-            echo "   ⚠️  TCC database is read-only or protected"
-            echo "   ℹ️  This is normal on modern macOS - database is system-protected"
-            echo "   💡 If you need to reset: Go to System Settings > Privacy & Security"
-        else
-            # Try to delete entries
-            ERROR_OUTPUT=$(sqlite3 "$TCC_DB" "DELETE FROM access WHERE
-                client LIKE '%WhisperWrap%' OR
-                client LIKE '%whisperwrap%' OR
-                client LIKE '%WhisperWrap.app%' OR
-                client LIKE '%whisperwrap.app%' OR
-                client LIKE '%$BUNDLE_ID%';" 2>&1)
-
-            if [ $? -eq 0 ]; then
-                # Check if any rows were deleted
-                REMAINING=$(sqlite3 "$TCC_DB" "SELECT COUNT(*) FROM access WHERE
-                    client LIKE '%WhisperWrap%' OR
-                    client LIKE '%whisperwrap%' OR
-                    client LIKE '%WhisperWrap.app%' OR
-                    client LIKE '%whisperwrap.app%' OR
-                    client LIKE '%$BUNDLE_ID%';" 2>/dev/null)
-                echo "   ✅ Direct database cleanup completed"
-                if [ "$REMAINING" = "0" ]; then
-                    echo "   ✅ All WhisperWrap TCC entries removed"
-                else
-                    echo "   ⚠️  Some entries may remain: $REMAINING entries found"
-                fi
-                echo "   💡 Restart your Mac for changes to take full effect"
-            else
-                echo "   ⚠️  Database modification failed: $ERROR_OUTPUT"
-                echo "   💡 Try: Close System Settings, then run: killall -9 cfprefsd tccd"
-            fi
-        fi
-    else
-        echo "   ℹ️  TCC database not found at expected location"
-    fi
-else
-    echo "   ⚠️  sqlite3 not found - cannot check database"
-fi
-
 # 5. Remove Login Item
 echo "🚀 Checking login items..."
 
