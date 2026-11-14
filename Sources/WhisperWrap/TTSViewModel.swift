@@ -53,10 +53,11 @@ enum KeychainSecret {
         return String(data: data, encoding: .utf8)
     }
 
-    /// Empty value deletes the item.
-    static func set(_ value: String, account: String) {
+    /// Empty value deletes the item. Returns false when the Keychain write failed.
+    @discardableResult
+    static func set(_ value: String, account: String) -> Bool {
         SecItemDelete(query(account) as CFDictionary)
-        guard !value.isEmpty else { return }
+        guard !value.isEmpty else { return true }
         var q = query(account)
         q[kSecValueData as String] = Data(value.utf8)
         q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -64,14 +65,27 @@ enum KeychainSecret {
         if status != errSecSuccess {
             LoggerService.shared.debug("Keychain write failed for \(account): \(status)")
         }
+        return status == errSecSuccess
     }
 
+    /// The Keychain write used by `loadMigrating`; tests swap it to simulate a failure.
+    nonisolated(unsafe) static var writer: @MainActor (String, String) -> Bool = { set($0, account: $1) }
+
     /// Reads the Keychain value, first moving any legacy plaintext UserDefaults value
-    /// stored under the same key into the Keychain and deleting it from defaults.
+    /// stored under the same key into the Keychain and deleting it from defaults. If the
+    /// Keychain write fails the defaults value is kept, so the key is never lost.
     static func loadMigrating(account: String, defaults: UserDefaults = .standard) -> String {
         if let legacy = defaults.string(forKey: account) {
-            if !legacy.isEmpty { set(legacy, account: account) }
+            guard !legacy.isEmpty else {
+                defaults.removeObject(forKey: account)
+                return get(account: account) ?? ""
+            }
+            guard writer(legacy, account) else {
+                LoggerService.shared.debug("Keychain migration failed, legacy value kept")
+                return legacy
+            }
             defaults.removeObject(forKey: account)
+            return get(account: account) ?? legacy
         }
         return get(account: account) ?? ""
     }
