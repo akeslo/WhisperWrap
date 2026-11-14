@@ -7,9 +7,38 @@ import XCTest
 @MainActor
 final class DictationViewModelTests: XCTestCase {
 
+    private var savedIsTrusted: (() -> Bool)!
+    private var savedPasteboard: NSPasteboard!
+
     override func setUp() {
         super.setUp()
         DictationViewModel.keystrokesEnabled = false
+        savedIsTrusted = DictationViewModel.isTrusted
+        savedPasteboard = DictationViewModel.pasteboard
+    }
+
+    override func tearDown() {
+        DictationViewModel.keystrokesEnabled = false
+        DictationViewModel.isTrusted = savedIsTrusted
+        DictationViewModel.pasteboard = savedPasteboard
+        super.tearDown()
+    }
+
+    // MARK: - Paste without Accessibility
+
+    func testPasteWithoutAccessibilityRaisesAlertAndKeepsText() {
+        let viewModel = DictationViewModel()
+        let testBoard = NSPasteboard(name: .init("WhisperWrapTests"))
+        testBoard.clearContents()
+        DictationViewModel.keystrokesEnabled = true
+        DictationViewModel.isTrusted = { false }
+        DictationViewModel.pasteboard = testBoard
+
+        viewModel.deliver("hi")
+
+        XCTAssertEqual(viewModel.activeAlert?.id, 0)
+        XCTAssertEqual(testBoard.string(forType: .string), "hi")
+        testBoard.releaseGlobally()
     }
 
     // MARK: - Test 1: Claude Disabled Path

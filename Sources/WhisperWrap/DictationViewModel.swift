@@ -719,17 +719,23 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     /// Pastes `text` into the frontmost app via a synthesized Cmd-V. Unless the user also
     /// wants it copied, the text is marked transient (clipboard managers skip it) and the
-    /// prior clipboard is restored after 300ms. Needs Accessibility; silently no-ops without it.
+    /// prior clipboard is restored after 300ms. Needs Accessibility; without it the text is
+    /// left on the clipboard and this returns false so the caller can raise the alert.
     /// Tests turn this off so a run never types into whatever app has focus.
     nonisolated(unsafe) static var keystrokesEnabled = true
+    nonisolated(unsafe) static var isTrusted: () -> Bool = { AXIsProcessTrusted() }
+    nonisolated(unsafe) static var pasteboard: NSPasteboard = .general
 
-    static func paste(_ text: String, keepOnClipboard: Bool) {
-        guard keystrokesEnabled else { return }
-        guard AXIsProcessTrusted() else {
+    @discardableResult
+    static func paste(_ text: String, keepOnClipboard: Bool) -> Bool {
+        guard keystrokesEnabled else { return true }
+        guard isTrusted() else {
             LoggerService.shared.debug("Auto-paste skipped — Accessibility not granted")
-            return
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            return false
         }
-        let pb = NSPasteboard.general
+        let pb = pasteboard
         let saved: [NSPasteboardItem] = keepOnClipboard ? [] : (pb.pasteboardItems ?? []).map { item in
             let copy = NSPasteboardItem()
             for type in item.types {
@@ -752,13 +758,20 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             e?.post(tap: .cghidEventTap)
         }
 
-        guard !keepOnClipboard else { return }
+        guard !keepOnClipboard else { return true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             // Someone else wrote the clipboard in the meantime; theirs wins.
             guard pb.changeCount == ourChange else { return }
             pb.clearContents()
             if !saved.isEmpty { pb.writeObjects(saved) }
         }
+        return true
+    }
+
+    /// Pastes `text`; if Accessibility is missing the text stays on the clipboard and the
+    /// Accessibility alert is raised.
+    func deliver(_ text: String) {
+        if !Self.paste(text, keepOnClipboard: autoCopy) { activeAlert = .accessibility }
     }
 
     // MARK: - Refine
@@ -801,7 +814,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 Self.undoLastEdit()
                 try? await Task.sleep(nanoseconds: 80_000_000)
             }
-            Self.paste(refined, keepOnClipboard: autoCopy)
+            deliver(refined)
             if autoCopy {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(refined, forType: .string)
@@ -809,7 +822,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             if showHUD { HUDWindowController.shared.flashLanded() }
         case .error, .emptyOutput:
             claudeService.isConnected = false
-            if !replacePaste { Self.paste(raw, keepOnClipboard: autoCopy) }
+            if !replacePaste { deliver(raw) }
             if showHUD { HUDWindowController.shared.flashFailure("Refine failed, raw text kept. Check claude login.") }
         }
     }
@@ -930,7 +943,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 let hasSpeech = text != ContentViewModel.noSpeechDetectedSentinel
                     && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 if hasSpeech {
-                    if !self.autoRefine { Self.paste(text, keepOnClipboard: autoCopy) }
+                    if !self.autoRefine { self.deliver(text) }
                     offerRefine = true
                 }
                 if let stopAt = self.stopRequestedAt {
