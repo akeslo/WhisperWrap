@@ -64,6 +64,7 @@ struct HUDView: View {
             }
             .buttonStyle(.plain)
             .help(state.status == .listening ? "Cancel recording" : "Hide")
+            .accessibilityLabel(state.status == .listening ? "Cancel recording" : "Hide")
         }
         .padding(.horizontal, 14)
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -142,6 +143,7 @@ struct HUDView: View {
             .fixedSize()
             .padding(.horizontal, 8)
             .help("Refine with another prompt")
+            .accessibilityLabel("Refine options")
         }
         .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
