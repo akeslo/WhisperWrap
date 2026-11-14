@@ -1,4 +1,5 @@
 import XCTest
+import FluidAudio
 @testable import WhisperWrap
 
 /// R7: the json export format was hand-rolled string interpolation that only escaped `"`,
@@ -9,6 +10,38 @@ import XCTest
 final class ParakeetEngineTests: XCTestCase {
     private func seg(_ start: Float, _ end: Float, _ text: String) -> ParakeetEngine.ExportedSegment {
         .init(start: start, end: end, text: text)
+    }
+
+    // MARK: - prepare() (A-TEST-3)
+
+    func testConcurrentPrepareLoadsTheModelOnce() async throws {
+        var count = 0
+        let engine = ParakeetEngine(loader: {
+            count += 1
+            try await Task.sleep(nanoseconds: 50_000_000)
+            return AsrManager()
+        })
+        async let a = engine.prepare()
+        async let b = engine.prepare()
+        let (first, second) = try await (a, b)
+        XCTAssertEqual(count, 1)
+        XCTAssertTrue(first === second)
+    }
+
+    func testPrepareRetriesAfterAFailedLoad() async throws {
+        struct LoadFailed: Error {}
+        var count = 0
+        let engine = ParakeetEngine(loader: {
+            count += 1
+            if count == 1 { throw LoadFailed() }
+            return AsrManager()
+        })
+        do {
+            _ = try await engine.prepare()
+            XCTFail("first prepare() should throw")
+        } catch is LoadFailed {}
+        _ = try await engine.prepare()
+        XCTAssertEqual(count, 2)
     }
 
     func testTxtFormatJoinsTrimmedSegmentText() throws {

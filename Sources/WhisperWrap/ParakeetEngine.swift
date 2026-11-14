@@ -7,19 +7,28 @@ import Foundation
 class ParakeetEngine {
     private var manager: AsrManager?
     private var loading: Task<AsrManager, Error>?
+    private let loader: () async throws -> AsrManager
     var isReady: Bool { manager != nil }
 
+    /// `loader` downloads and loads the model; tests pass a stub.
+    init(loader: @escaping () async throws -> AsrManager = ParakeetEngine.downloadAndLoad) {
+        self.loader = loader
+    }
+
+    static func downloadAndLoad() async throws -> AsrManager {
+        LoggerService.shared.debug("Loading Parakeet TDT v3")
+        let models = try await AsrModels.downloadAndLoad(version: .v3)
+        let m = AsrManager()
+        try await m.loadModels(models)
+        LoggerService.shared.debug("Parakeet ready")
+        return m
+    }
+
+    /// Concurrent callers share one load; a failed load is retried on the next call.
     func prepare() async throws -> AsrManager {
         if let manager { return manager }
         if let loading { return try await loading.value }
-        let task = Task<AsrManager, Error> {
-            LoggerService.shared.debug("Loading Parakeet TDT v3")
-            let models = try await AsrModels.downloadAndLoad(version: .v3)
-            let m = AsrManager()
-            try await m.loadModels(models)
-            LoggerService.shared.debug("Parakeet ready")
-            return m
-        }
+        let task = Task<AsrManager, Error> { try await loader() }
         loading = task
         defer { loading = nil }
         let m = try await task.value
