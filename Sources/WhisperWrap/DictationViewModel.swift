@@ -23,31 +23,31 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     // Feature Settings
     @Published var autoCopy: Bool = true {
         didSet {
-            UserDefaults.standard.set(autoCopy, forKey: "autoCopy")
+            defaults.set(autoCopy, forKey: "autoCopy")
         }
     }
     /// Run the default Claude prompt on every dictation instead of offering the Refine pill.
     @Published var autoRefine: Bool = false {
         didSet {
-            UserDefaults.standard.set(autoRefine, forKey: "autoRefine")
+            defaults.set(autoRefine, forKey: "autoRefine")
         }
     }
     @Published var showHUD: Bool {
         didSet {
-            UserDefaults.standard.set(showHUD, forKey: "showHUD")
+            defaults.set(showHUD, forKey: "showHUD")
         }
     }
     @Published var saveRecordings: Bool = false {
         didSet {
-            UserDefaults.standard.set(saveRecordings, forKey: "saveRecordings")
+            defaults.set(saveRecordings, forKey: "saveRecordings")
         }
     }
     @Published var recordingsSaveDirectory: URL? {
         didSet {
             if let url = recordingsSaveDirectory {
-                UserDefaults.standard.set(url.path, forKey: "recordingsSaveDirectory")
+                defaults.set(url.path, forKey: "recordingsSaveDirectory")
             } else {
-                UserDefaults.standard.removeObject(forKey: "recordingsSaveDirectory")
+                defaults.removeObject(forKey: "recordingsSaveDirectory")
             }
         }
     }
@@ -58,15 +58,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var selectedClaudePromptID: UUID? {
         didSet {
             if let id = selectedClaudePromptID {
-                UserDefaults.standard.set(id.uuidString, forKey: "dictationClaudePromptID")
+                defaults.set(id.uuidString, forKey: "dictationClaudePromptID")
             } else {
-                UserDefaults.standard.removeObject(forKey: "dictationClaudePromptID")
+                defaults.removeObject(forKey: "dictationClaudePromptID")
             }
         }
     }
     @Published var selectedClaudeModel: String = "sonnet" {
         didSet {
-            UserDefaults.standard.set(selectedClaudeModel, forKey: "dictationClaudeModel")
+            defaults.set(selectedClaudeModel, forKey: "dictationClaudeModel")
         }
     }
     /// The raw, pre-Claude transcription from the most recent dictation.
@@ -101,9 +101,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         didSet {
             guard !isApplyingDeviceFallback else { return }
             if let id = selectedAudioDeviceID {
-                UserDefaults.standard.set(id, forKey: "selectedAudioDeviceID")
+                defaults.set(id, forKey: "selectedAudioDeviceID")
             } else {
-                UserDefaults.standard.removeObject(forKey: "selectedAudioDeviceID")
+                defaults.removeObject(forKey: "selectedAudioDeviceID")
             }
         }
     }
@@ -130,32 +130,37 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var stopRequestedAt: Date?
     private var silentMonitor = SilentRecordingMonitor()
     private var silentNotificationPosted = false
-    
-    override init() {
-        self.showHUD = UserDefaults.standard.object(forKey: "showHUD") as? Bool ?? true
-        self.autoCopy = UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true
-        self.autoRefine = UserDefaults.standard.bool(forKey: "autoRefine")
-        self.saveRecordings = UserDefaults.standard.object(forKey: "saveRecordings") as? Bool ?? false
+
+    /// Where settings persist. Tests pass a throwaway suite so a run never writes the
+    /// user's real defaults.
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.showHUD = defaults.object(forKey: "showHUD") as? Bool ?? true
+        self.autoCopy = defaults.object(forKey: "autoCopy") as? Bool ?? true
+        self.autoRefine = defaults.bool(forKey: "autoRefine")
+        self.saveRecordings = defaults.object(forKey: "saveRecordings") as? Bool ?? false
 
         // Load saved recordings directory
-        if let savedPath = UserDefaults.standard.string(forKey: "recordingsSaveDirectory") {
+        if let savedPath = defaults.string(forKey: "recordingsSaveDirectory") {
             self.recordingsSaveDirectory = URL(fileURLWithPath: savedPath)
         }
 
         // Load Claude settings
-        if let savedID = UserDefaults.standard.string(forKey: "dictationClaudePromptID"),
+        if let savedID = defaults.string(forKey: "dictationClaudePromptID"),
            let uuid = UUID(uuidString: savedID) {
             self.selectedClaudePromptID = uuid
         } else {
             self.selectedClaudePromptID = ClaudePrompt.builtinPolish.id
         }
-        if let savedModel = UserDefaults.standard.string(forKey: "dictationClaudeModel") {
+        if let savedModel = defaults.string(forKey: "dictationClaudeModel") {
             self.selectedClaudeModel = savedModel
         }
         super.init()
 
         // Load saved device first, before loading available devices
-        if let savedDeviceID = UserDefaults.standard.string(forKey: "selectedAudioDeviceID") {
+        if let savedDeviceID = defaults.string(forKey: "selectedAudioDeviceID") {
             self.selectedAudioDeviceID = savedDeviceID
         }
 
@@ -172,7 +177,6 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     private func setupHotKey() {
         // Main dictation toggle: Option+Space by default, overridden by any saved hotkey.
-        let defaults = UserDefaults.standard
         var keyCode = defaults.object(forKey: Self.hotkeyKeyCodeDefaultsKey) as? Int ?? kVK_Space
         var modifiers = defaults.object(forKey: Self.hotkeyModifiersDefaultsKey) as? Int ?? optionKey
         // Guard against a corrupted persisted value (e.g. written directly via
@@ -362,7 +366,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Prefer the user's persisted choice whenever that device is present — including
         // when it reappears after being unplugged. Only when it is genuinely unavailable
         // do we fall back to the first device, and that fallback is not persisted.
-        let preferredID = UserDefaults.standard.string(forKey: "selectedAudioDeviceID")
+        let preferredID = defaults.string(forKey: "selectedAudioDeviceID")
         if let preferredID, devices.contains(where: { $0.id == preferredID }) {
             if selectedAudioDeviceID != preferredID {
                 applyDeviceFallback(preferredID)
@@ -439,8 +443,8 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
     
     func setHotkey(keyCode: Int, modifiers: Int) {
-        UserDefaults.standard.set(keyCode, forKey: Self.hotkeyKeyCodeDefaultsKey)
-        UserDefaults.standard.set(modifiers, forKey: Self.hotkeyModifiersDefaultsKey)
+        defaults.set(keyCode, forKey: Self.hotkeyKeyCodeDefaultsKey)
+        defaults.set(modifiers, forKey: Self.hotkeyModifiersDefaultsKey)
         registerDictationHotkey(keyCode: keyCode, modifiers: modifiers)
     }
 
