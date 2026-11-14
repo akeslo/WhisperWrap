@@ -9,9 +9,13 @@ final class DictationViewModelTests: XCTestCase {
 
     private var savedIsTrusted: (() -> Bool)!
     private var savedPasteboard: NSPasteboard!
+    private var suiteName: String!
+    private var suite: UserDefaults!
 
     override func setUp() {
         super.setUp()
+        suiteName = "WhisperWrapTests.\(UUID().uuidString)"
+        suite = UserDefaults(suiteName: suiteName)!
         DictationViewModel.keystrokesEnabled = false
         savedIsTrusted = DictationViewModel.isTrusted
         savedPasteboard = DictationViewModel.pasteboard
@@ -21,13 +25,14 @@ final class DictationViewModelTests: XCTestCase {
         DictationViewModel.keystrokesEnabled = false
         DictationViewModel.isTrusted = savedIsTrusted
         DictationViewModel.pasteboard = savedPasteboard
+        suite.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
     // MARK: - Paste without Accessibility
 
     func testPasteWithoutAccessibilityRaisesAlertAndKeepsText() {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let testBoard = NSPasteboard(name: .init("WhisperWrapTests"))
         testBoard.clearContents()
         DictationViewModel.keystrokesEnabled = true
@@ -44,7 +49,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Failure with the HUD off
 
     func testFailureWithHUDOffRaisesAlert() {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let savedShowHUD = viewModel.showHUD
         defer { viewModel.showHUD = savedShowHUD }
         viewModel.showHUD = false
@@ -57,7 +62,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 1: Claude Disabled Path
 
     func testTranscribeWithClaudeDisabled_ReturnsRawTranscriptionOnly() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -82,7 +87,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 2: Claude Enabled + Success
 
     func testTranscribeWithClaudeEnabled_ReturnsClaudeOutput() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -111,7 +116,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 3: Claude Enabled + Error Detected
 
     func testTranscribeDetectsClaudeError_RevertsToRawAndMarksDisconnected() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -141,7 +146,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 4: AutoCopy True
 
     func testAutoCopyTrue_CopiesTranscriptionToClipboard() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -167,7 +172,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 5: AutoCopy False
 
     func testAutoCopyFalse_DoesNotCopyToClipboard() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -195,7 +200,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - U4: "No Speech Detected" sentinel is never auto-copied
 
     func testAutoCopyTrue_DoesNotCopyNoSpeechDetectedSentinel() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -224,7 +229,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 6: Empty/Whitespace Transcription
 
     func testEmptyTranscription_HandlesGracefully() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -248,7 +253,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 7: Empty String Transcription
 
     func testEmptyStringTranscription_SkipsClaude() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -271,7 +276,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 8: Claude Output Preserves Valid Text
 
     func testClaudeOutput_PreservesValidText() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -298,7 +303,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 9: Error Detection with Traceback
 
     func testErrorDetection_RecognizesTraceback() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
@@ -326,7 +331,7 @@ final class DictationViewModelTests: XCTestCase {
     // MARK: - Test 10: Different Raw and Processed Output
 
     func testDifferentRawAndProcessed_StoresCorrectly() async throws {
-        let viewModel = DictationViewModel()
+        let viewModel = DictationViewModel(defaults: suite)
         let mockClaudeService = MockClaudeService()
         let mockClaudePromptManager = MockClaudePromptManager()
         let mockContentViewModel = MockContentViewModel()
