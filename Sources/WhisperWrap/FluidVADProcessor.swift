@@ -61,7 +61,9 @@ final class FluidVADProcessor: @unchecked Sendable {
         }
     }
 
-    private func loadAsPCM(url: URL) throws -> [Float] {
+    /// Decodes `url` to 16 kHz mono Float32 samples, resampling other rates. Holds the whole
+    /// take in memory twice (about 3.8 MB/min each); fine for dictation.
+    func loadAsPCM(url: URL) throws -> [Float] {
         let audioFile = try AVAudioFile(forReading: url)
         guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -71,25 +73,42 @@ final class FluidVADProcessor: @unchecked Sendable {
         ) else { throw VADAllocationError.formatCreationFailed }
         let frameCount = AVAudioFrameCount(audioFile.length)
         guard frameCount > 0 else { return [] }
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-            throw VADAllocationError.bufferAllocationFailed
-        }
+        let buffer: AVAudioPCMBuffer
+        let srcRate = audioFile.processingFormat.sampleRate
         // If the file is already at 16 kHz, read directly; otherwise convert
-        if abs(audioFile.processingFormat.sampleRate - Double(Self.sampleRate)) < 1 {
-            try audioFile.read(into: buffer)
+        if abs(srcRate - Double(Self.sampleRate)) < 1 {
+            guard let direct = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+                throw VADAllocationError.bufferAllocationFailed
+            }
+            try audioFile.read(into: direct)
+            buffer = direct
         } else {
-            // Use AVAudioConverter for non-16 kHz files
-            let converter = AVAudioConverter(from: audioFile.processingFormat, to: format)
+            guard let converter = AVAudioConverter(from: audioFile.processingFormat, to: format) else {
+                throw VADAllocationError.formatCreationFailed
+            }
             guard let srcBuffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
                 throw VADAllocationError.bufferAllocationFailed
             }
             try audioFile.read(into: srcBuffer)
+            // The output holds the resampled length, not the source frame count.
+            let outCapacity = AVAudioFrameCount((Double(frameCount) * Double(Self.sampleRate) / srcRate).rounded(.up)) + 1
+            guard let converted = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: outCapacity) else {
+                throw VADAllocationError.bufferAllocationFailed
+            }
+            // Feed the source exactly once, then signal end of stream so the converter flushes.
+            var fed = false
             var error: NSError?
-            converter?.convert(to: buffer, error: &error) { _, outStatus in
+            converter.convert(to: converted, error: &error) { _, outStatus in
+                if fed {
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                fed = true
                 outStatus.pointee = .haveData
                 return srcBuffer
             }
             if let e = error { throw e }
+            buffer = converted
         }
         guard let channelData = buffer.floatChannelData?[0] else { return [] }
         return Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
