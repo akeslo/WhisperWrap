@@ -4,10 +4,29 @@ import XCTest
 @MainActor
 final class KeychainSecretTests: XCTestCase {
     private let account = "test-\(UUID().uuidString)"
+    private var savedWriter: (@MainActor (String, String) -> Bool)!
+
+    override func setUp() {
+        super.setUp()
+        savedWriter = KeychainSecret.writer
+    }
 
     override func tearDown() {
+        KeychainSecret.writer = savedWriter
         KeychainSecret.set("", account: account)
         UserDefaults.standard.removeObject(forKey: account)
+        super.tearDown()
+    }
+
+    func testFailedKeychainWriteKeepsLegacyValue() {
+        KeychainSecret.writer = { _, _ in false }
+        let suiteName = "ww-test-\(UUID())"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("sk-legacy", forKey: account)
+
+        XCTAssertEqual(KeychainSecret.loadMigrating(account: account, defaults: defaults), "sk-legacy")
+        XCTAssertEqual(defaults.string(forKey: account), "sk-legacy")
     }
 
     func testMigratesLegacyDefaultsValueAndDeletesIt() {
