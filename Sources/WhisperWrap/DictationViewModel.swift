@@ -23,31 +23,31 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     // Feature Settings
     @Published var autoCopy: Bool = true {
         didSet {
-            defaults.set(autoCopy, forKey: "autoCopy")
+            defaults.set(autoCopy, forKey: SettingsKey.autoCopy)
         }
     }
     /// Run the default Claude prompt on every dictation instead of offering the Refine pill.
     @Published var autoRefine: Bool = false {
         didSet {
-            defaults.set(autoRefine, forKey: "autoRefine")
+            defaults.set(autoRefine, forKey: SettingsKey.autoRefine)
         }
     }
     @Published var showHUD: Bool {
         didSet {
-            defaults.set(showHUD, forKey: "showHUD")
+            defaults.set(showHUD, forKey: SettingsKey.showHUD)
         }
     }
     @Published var saveRecordings: Bool = false {
         didSet {
-            defaults.set(saveRecordings, forKey: "saveRecordings")
+            defaults.set(saveRecordings, forKey: SettingsKey.saveRecordings)
         }
     }
     @Published var recordingsSaveDirectory: URL? {
         didSet {
             if let url = recordingsSaveDirectory {
-                defaults.set(url.path, forKey: "recordingsSaveDirectory")
+                defaults.set(url.path, forKey: SettingsKey.recordingsSaveDirectory)
             } else {
-                defaults.removeObject(forKey: "recordingsSaveDirectory")
+                defaults.removeObject(forKey: SettingsKey.recordingsSaveDirectory)
             }
         }
     }
@@ -58,15 +58,15 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var selectedClaudePromptID: UUID? {
         didSet {
             if let id = selectedClaudePromptID {
-                defaults.set(id.uuidString, forKey: "dictationClaudePromptID")
+                defaults.set(id.uuidString, forKey: SettingsKey.dictationClaudePromptID)
             } else {
-                defaults.removeObject(forKey: "dictationClaudePromptID")
+                defaults.removeObject(forKey: SettingsKey.dictationClaudePromptID)
             }
         }
     }
     @Published var selectedClaudeModel: String = "sonnet" {
         didSet {
-            defaults.set(selectedClaudeModel, forKey: "dictationClaudeModel")
+            defaults.set(selectedClaudeModel, forKey: SettingsKey.dictationClaudeModel)
         }
     }
     /// The raw, pre-Claude transcription from the most recent dictation.
@@ -101,9 +101,9 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         didSet {
             guard !isApplyingDeviceFallback else { return }
             if let id = selectedAudioDeviceID {
-                defaults.set(id, forKey: "selectedAudioDeviceID")
+                defaults.set(id, forKey: SettingsKey.selectedAudioDeviceID)
             } else {
-                defaults.removeObject(forKey: "selectedAudioDeviceID")
+                defaults.removeObject(forKey: SettingsKey.selectedAudioDeviceID)
             }
         }
     }
@@ -137,30 +137,30 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.showHUD = defaults.object(forKey: "showHUD") as? Bool ?? true
-        self.autoCopy = defaults.object(forKey: "autoCopy") as? Bool ?? true
-        self.autoRefine = defaults.bool(forKey: "autoRefine")
-        self.saveRecordings = defaults.object(forKey: "saveRecordings") as? Bool ?? false
+        self.showHUD = defaults.object(forKey: SettingsKey.showHUD) as? Bool ?? true
+        self.autoCopy = defaults.object(forKey: SettingsKey.autoCopy) as? Bool ?? true
+        self.autoRefine = defaults.bool(forKey: SettingsKey.autoRefine)
+        self.saveRecordings = defaults.object(forKey: SettingsKey.saveRecordings) as? Bool ?? false
 
         // Load saved recordings directory
-        if let savedPath = defaults.string(forKey: "recordingsSaveDirectory") {
+        if let savedPath = defaults.string(forKey: SettingsKey.recordingsSaveDirectory) {
             self.recordingsSaveDirectory = URL(fileURLWithPath: savedPath)
         }
 
         // Load Claude settings
-        if let savedID = defaults.string(forKey: "dictationClaudePromptID"),
+        if let savedID = defaults.string(forKey: SettingsKey.dictationClaudePromptID),
            let uuid = UUID(uuidString: savedID) {
             self.selectedClaudePromptID = uuid
         } else {
             self.selectedClaudePromptID = ClaudePrompt.builtinPolish.id
         }
-        if let savedModel = defaults.string(forKey: "dictationClaudeModel") {
+        if let savedModel = defaults.string(forKey: SettingsKey.dictationClaudeModel) {
             self.selectedClaudeModel = savedModel
         }
         super.init()
 
         // Load saved device first, before loading available devices
-        if let savedDeviceID = defaults.string(forKey: "selectedAudioDeviceID") {
+        if let savedDeviceID = defaults.string(forKey: SettingsKey.selectedAudioDeviceID) {
             self.selectedAudioDeviceID = savedDeviceID
         }
 
@@ -366,7 +366,7 @@ class DictationViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Prefer the user's persisted choice whenever that device is present — including
         // when it reappears after being unplugged. Only when it is genuinely unavailable
         // do we fall back to the first device, and that fallback is not persisted.
-        let preferredID = defaults.string(forKey: "selectedAudioDeviceID")
+        let preferredID = defaults.string(forKey: SettingsKey.selectedAudioDeviceID)
         if let preferredID, devices.contains(where: { $0.id == preferredID }) {
             if selectedAudioDeviceID != preferredID {
                 applyDeviceFallback(preferredID)
