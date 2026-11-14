@@ -1,6 +1,6 @@
 # CLAUDE.md — WhisperWrap
 
-macOS 14+ menu bar app: local speech-to-text via FluidAudio Parakeet TDT v3 (CoreML), global-hotkey dictation with auto-copy to clipboard (README's "Auto Paste" does not exist in code — no paste synthesis, no such setting), drag-drop file transcription, TTS (system voices + optional ElevenLabs), and optional Claude post-processing that shells out to the `claude` CLI (no Claude API key stored — auth is via the `claude` CLI's own login). The ElevenLabs API key *is* stored, in plaintext `UserDefaults`/`@AppStorage` — see AUDIT.md's top finding.
+macOS 14+ menu bar app: local speech-to-text via FluidAudio Parakeet TDT v3 (CoreML), global-hotkey dictation that pastes at the cursor (synthesized Cmd-V, needs Accessibility; without it the text is left on the clipboard), drag-drop file transcription, TTS (system voices + optional ElevenLabs), and optional Claude post-processing that shells out to the `claude` CLI (no Claude API key stored — auth is via the `claude` CLI's own login). The ElevenLabs API key is stored in the Keychain (`KeychainSecret` in `TTSViewModel.swift`, migrated from the old `UserDefaults` value).
 
 ## Stack
 
@@ -12,18 +12,19 @@ macOS 14+ menu bar app: local speech-to-text via FluidAudio Parakeet TDT v3 (Cor
 
 ```bash
 swift build              # debug build
-swift test               # run test suite (6 test files) — MUST run outside the Claude
+swift test               # run test suite — MUST run outside the Claude
                          # command sandbox: SwiftPM invokes sandbox-exec itself and fails
                          # with "sandbox_apply: Operation not permitted" when nested.
+                         # Over SSH run tests via ~/.local/bin/gui-run; KeychainSecretTests
+                         # fail on the locked keychain.
 ./generate_app.sh        # Release build + package WhisperWrap.app at repo root
-                         # (CFBundleVersion hardcoded "1", ad-hoc signing; the
-                         # git rev-list versioning claim in CLAUDE.local.md is stale)
+                         # (CFBundleVersion = git rev-list --count HEAD, ad-hoc signing)
 VERSION=x.y ./release.sh # sign (Developer ID, hardened runtime) → notarize (notarytool profile
                          # "roar") → staple → Sparkle appcast (EdDSA key in login Keychain) → gh release
 ./uninstall_clean.sh     # kills app, removes /Applications copy + local .app + prefs/caches
 ```
 
-No lint config. No CI. Tests are XCTest under `Tests/WhisperWrapTests/` (8 files as of 2026-08-23).
+No lint config. No CI. Tests are XCTest under `Tests/WhisperWrapTests/` (13 files as of 2026-11-14).
 
 `simulate_login.sh` was deleted 2026-08-23 — it tested a `-backgroundLaunch` flag and
 `/tmp/ww_internal.log` that never existed in Sources (`LoggerService` is in-memory only).
@@ -40,7 +41,7 @@ No lint config. No CI. Tests are XCTest under `Tests/WhisperWrapTests/` (8 files
 
 ## Conventions & Gotchas
 
-- Settings live in `UserDefaults.standard`, except the ElevenLabs API key which lives in `@AppStorage("elevenLabsAPIKey")` (`TTSViewModel.swift`) — same plaintext-on-disk exposure as `UserDefaults`, just accessed via the SwiftUI wrapper. See AUDIT.md before changing key handling.
+- Settings live in `UserDefaults.standard`, except the ElevenLabs API key which lives in the Keychain via `KeychainSecret` (`TTSViewModel.swift`), migrated from the old `UserDefaults` key on first read. See AUDIT.md before changing key handling.
 - Temp files go in `ContentViewModel.scratchDirectory` (`<temp>/WhisperWrap/`), never `FileManager.default.temporaryDirectory` itself. `cleanupOldTempFiles()` deletes by extension (`.txt`/`.srt`/`.json`) with no ownership check, so pointing it at the shared per-user temp dir reaps other processes' files — real defect, fixed 2026-08-03.
 - `ContentViewModel.init()` reads the saved Claude-prompt ID from real `UserDefaults` — state leaks across tests and across `swift test` invocations. Clear `fileClaudePromptID` in `setUp()` (see `ContentViewModelTests`) for any test touching it.
 - `UNUserNotificationCenter` requires a real .app bundle; notification setup is skipped under `swift run` (no bundle ID).
