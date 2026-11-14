@@ -17,6 +17,7 @@ struct TranscriptionView: View {
     @State private var isCheckingClaude: Bool = false
     @State private var claudeSetupError: String?
     @State private var showClaudeSetupAlert: Bool = false
+    @State private var pendingDropURL: URL?
 
     let formats = ["txt", "srt", "json"]
     let onDrop: (URL, String, Bool) -> Void
@@ -152,24 +153,25 @@ struct TranscriptionView: View {
                     guard let url = URL(dataRepresentation: urlData, relativeTo: nil) else { return }
                     droppedFileName = url.lastPathComponent
                     if fileClaudeEnabled {
-                        let alert = NSAlert()
-                        alert.messageText = "Send this transcript to Claude?"
-                        alert.informativeText = "The transcribed text of \(url.lastPathComponent) goes to Anthropic for refining."
-                        alert.addButton(withTitle: "Transcribe and Refine")
-                        alert.addButton(withTitle: "Transcribe Only")
-                        alert.addButton(withTitle: "Cancel")
-                        let response = alert.runModal()
-                        if response == .alertFirstButtonReturn {
-                            onDrop(url, selectedFormat, true)
-                        } else if response == .alertSecondButtonReturn {
-                            onDrop(url, selectedFormat, false)
-                        }
+                        pendingDropURL = url
                     } else {
                         onDrop(url, selectedFormat, false)
                     }
                 }
             }
             return true
+        }
+        .confirmationDialog(
+            "Send this transcript to Claude?",
+            isPresented: Binding(get: { pendingDropURL != nil }, set: { if !$0 { pendingDropURL = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDropURL
+        ) { url in
+            Button("Transcribe and Refine") { onDrop(url, selectedFormat, true) }
+            Button("Transcribe Only") { onDrop(url, selectedFormat, false) }
+            Button("Cancel", role: .cancel) {}
+        } message: { url in
+            Text("The transcribed text of \(url.lastPathComponent) goes to Anthropic for refining.")
         }
         .animation(.easeInOut(duration: 0.15), value: isTargeted)
     }
